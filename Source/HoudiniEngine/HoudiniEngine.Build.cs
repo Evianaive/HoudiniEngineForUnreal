@@ -306,7 +306,8 @@ public class HoudiniEngine : ModuleRules
             {
                 "Landscape",
                 "PhysicsCore",
-                "PhysicsUtilities"
+                "PhysicsUtilities",
+                "StructUtils"
             }
        );
 
