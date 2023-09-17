@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "HAPI/HAPI_Common.h"
 #include "HoudiniApi.h"
 #define DECLARE_HAPI_STORAGE_TRAITS(Name)\
 static inline auto Export = &FHoudiniApi::SetAttribute##Name##Data;\

@@ -46,9 +46,9 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 	{
 		static TJumpTable<
 			FHapiSetAttribDataDispatch,
-			TIntegerSequence<int32,static_cast<int32>(HAPI_STORAGETYPE_MAX)>
+			TMakeIntegerSequence<int32,static_cast<int32>(HAPI_STORAGETYPE_MAX)>			
 		> JumpTable;
-		JumpTable.Func[InAttributeInfo.storage](Array,InNodeId,InPartId,InAttributeName,InAttributeInfo,LastParam);
+		return JumpTable.Func[InAttributeInfo.storage](Array,InNodeId,InPartId,InAttributeName,InAttributeInfo,LastParam);
 	}
 
 	template<typename ElementType>
@@ -79,7 +79,7 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 				{
 					int32 CurCount = InAttributeInfo.count - ChunkStart > ChunkSize ? ChunkSize : InAttributeInfo.count - ChunkStart;
 
-					Result = Traits::Export(
+					Result = (*Traits::Export)(
 						FHoudiniEngine::Get().GetSession(),
 						InNodeId, InPartId, TCHAR_TO_ANSI(*InAttributeName),
 						&InAttributeInfo, Array->GetData() + ChunkStart * InAttributeInfo.tupleSize,
@@ -92,7 +92,7 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 			else
 			{
 				// Send all the attribute values once
-				Result = Traits::Export(
+				Result = (*Traits::Export)(
 					FHoudiniEngine::Get().GetSession(),
 					InNodeId, InPartId, TCHAR_TO_ANSI(*InAttributeName),
 					&InAttributeInfo, Array->GetData(),
@@ -137,7 +137,7 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 						NumSent += SizesFixedArray[Idx + ChunkStart * InAttributeInfo.tupleSize];
 					}
 
-					Result = FHoudiniApi::SetAttributeStringArrayData(
+					Result = (*Traits::Export)(
 						FHoudiniEngine::Get().GetSession(),
 						InNodeId, InPartId, TCHAR_TO_ANSI(*InAttributeName),
 						&InAttributeInfo, Array->GetData() + StringStart, NumSent,
@@ -152,7 +152,7 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 			else
 			{
 				// Set all the attribute values once
-				Result = FHoudiniApi::SetAttributeStringArrayData(
+				Result = (*Traits::Export)(
 					FHoudiniEngine::Get().GetSession(),
 					InNodeId, InPartId, TCHAR_TO_ANSI(*InAttributeName),
 					&InAttributeInfo, Array->GetData(), Array->Num(),
@@ -173,8 +173,8 @@ HAPI_Result FHoudiniEngineUtilsExtenstion::FHapiSetAttribDataDispatch<Is>::Dispa
 	const FLastParam& LastParam)
 {
 	// FHapiStorageTraits<static_cast<HAPI_StorageType>(Is)>::Export;
-	if constexpr (HapiStorageTraits::IsArrayStorage(static_cast<HAPI_StorageType>(Is)))
-		return HapiSetAttribData(static_cast<const TArray<typename Traits::Type>*>(Array),InNodeId,InPartId,InAttributeName,InAttributeInfo);
-	else
-		return HapiSetAttribArrayData(static_cast<const TArray<typename Traits::Type>*>(Array),InNodeId,InPartId,InAttributeName,InAttributeInfo,LastParam.SizesFixedArray);
+	if constexpr (HapiStorageTraits::IsArrayStorage(static_cast<HAPI_StorageType>(Is)))	
+		return FHoudiniEngineUtilsExtenstion::HapiSetAttribArrayData(static_cast<const TArray<typename Traits::Type>*>(Array),InNodeId,InPartId,InAttributeName,InAttributeInfo,LastParam.SizesFixedArray);
+	else	
+		return FHoudiniEngineUtilsExtenstion::HapiSetAttribData(static_cast<const TArray<typename Traits::Type>*>(Array),InNodeId,InPartId,InAttributeName,InAttributeInfo);
 }

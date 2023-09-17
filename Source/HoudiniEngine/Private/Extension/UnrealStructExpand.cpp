@@ -2,8 +2,11 @@
 
 #include "UnrealStructExpand.h"
 
+#include "HapiStorageTypeTraits.h"
 #include "HoudiniApi.h"
 
+
+TMap<UScriptStruct*,FStructConvertSpecialization> FStructConvertSpecialization::RegisteredSpecializations;
 
 #pragma region Template
 
@@ -108,40 +111,41 @@ using TVectorCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,0,2,1>,
 using TColorCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,2,0,1,3>,TIntegerSequence<int32>>;
 using TMatrixCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,0,2,1,3,8,10,9,11,4,6,5,7,12,14,13,15>,TIntegerSequence<int32,12,13,14>>;
 
-template<typename ElementType, bool bUE2Hou>
+template<bool bUE2Hou, typename ElementType>
 static void ConvertInternal(UE::Math::TQuat<ElementType>* Quat)
 {
 	Swap(Quat->Y,Quat->Z);
 	Quat->W *= -1;
 }
 
-template<typename ElementType, bool bUE2Hou>
+template<bool bUE2Hou, typename ElementType>
 static void ConvertInternal(UE::Math::TRotator<ElementType>* Rotator)
 {
 	if constexpr (!bUE2Hou)
 	{
-		TRotatorCoordConvert::ReOrder<ElementType,bUE2Hou>(Rotator);
+		TRotatorCoordConvert::ReOrder<ElementType,bUE2Hou>(reinterpret_cast<uint8*>(Rotator));
 		Rotator->Pitch *= -1;
 		Rotator->Roll *= -1;
 	}
 	auto Quat = Rotator->Quaternion();
-	ConvertInternal(&Quat);
+	ConvertInternal<bUE2Hou>(&Quat);
 	if constexpr (bUE2Hou)
 	{
 		*Rotator = Quat.Rotator();
 		Rotator->Roll *= -1;
 		Rotator->Pitch *= -1;
-		TRotatorCoordConvert::ReOrder<ElementType,bUE2Hou>(Rotator);
+		TRotatorCoordConvert::ReOrder<ElementType,bUE2Hou>(reinterpret_cast<uint8*>(Rotator));
 	}
 }
 
-template<typename DataType, bool bUE2Hou>
+template<bool bUE2Hou, typename DataType>
 static void Convert(uint8* Data)
 {
-	ConvertInternal(reinterpret_cast<DataType*>(Data));
+	ConvertInternal<bUE2Hou>(reinterpret_cast<DataType*>(Data));
 }
 
-TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PodStructsStorageInfo{
+TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PodStructsStorageInfo
+{
 	{NAME_Vector2D,{2,HAPI_STORAGETYPE_FLOAT64}},
 	{NAME_Vector2d,{2,HAPI_STORAGETYPE_FLOAT64}},
 	{NAME_Vector2f,{2,HAPI_STORAGETYPE_FLOAT}},
@@ -161,24 +165,24 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PodStructsSto
 	{NAME_Vector4f,{4,HAPI_STORAGETYPE_FLOAT}},
 
 	{NAME_Rotator,{3,HAPI_STORAGETYPE_FLOAT64,
-	&Convert<FRotator,true>,
-	&Convert<FRotator,false>}},
+	&Convert<true,FRotator>,
+	&Convert<false,FRotator>}},
 	{NAME_Rotator3d,{3,HAPI_STORAGETYPE_FLOAT64,
-	&Convert<FRotator3d,true>,
-	&Convert<FRotator3d,false>}},
+	&Convert<true,FRotator3d>,
+	&Convert<false,FRotator3d>}},
 	{NAME_Rotator3f,{3,HAPI_STORAGETYPE_FLOAT,
-	&Convert<FRotator3f,true>,
-	&Convert<FRotator3f,false>}},
+	&Convert<true,FRotator3f>,
+	&Convert<false,FRotator3f>}},
 
 	{NAME_Quat,{4,HAPI_STORAGETYPE_FLOAT64,
-	&Convert<FQuat,true>,
-	&Convert<FQuat,false>}},
+	&Convert<true,FQuat>,
+	&Convert<false,FQuat>}},
 	{NAME_Quat4d,{4,HAPI_STORAGETYPE_FLOAT64,
-	&Convert<FQuat4d,true>,
-	&Convert<FQuat4d,false>}},
+	&Convert<true,FQuat4d>,
+	&Convert<false,FQuat4d>}},
 	{NAME_Quat4f,{4,HAPI_STORAGETYPE_FLOAT,
-	&Convert<FQuat4f,true>,
-	&Convert<FQuat4f,false>}},
+	&Convert<true,FQuat4f>,
+	&Convert<false,FQuat4f>}},
 	
 	{NAME_Color,{4,HAPI_STORAGETYPE_UINT8,
 	&TColorCoordConvert::ReOrderAndScale<uint8,true>,
@@ -201,6 +205,40 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PodStructsSto
 	&TMatrixCoordConvert::ReOrderAndScale<float,false>}},
 };
 
+TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PropertyStorageInfo = 
+{
+	{NAME_NameProperty,{1,HAPI_STORAGETYPE_STRING}},
+	{NAME_TextProperty,{1,HAPI_STORAGETYPE_STRING}},
+	{NAME_StrProperty,{1,HAPI_STORAGETYPE_STRING}},
+	// POD Struct Property is already handled by PodStructsStorageInfo in ctor of FDataGather_ExportInfo
+	// for other struct property that is not POD but export whole struct together by FDataGather_ExportInfo
+	// can only be string, but actually this will not be hit in FDataGather_PODExport::Init
+	{NAME_StructProperty,{1,HAPI_STORAGETYPE_STRING}},
+	{NAME_IntProperty,{1,HAPI_STORAGETYPE_INT}},
+	{NAME_BoolProperty,{1,HAPI_STORAGETYPE_INT8}},
+	{NAME_EnumProperty,{1,HAPI_STORAGETYPE_INT}},
+	{NAME_ByteProperty,{1,HAPI_STORAGETYPE_UINT8}},
+	{NAME_DoubleProperty,{1,HAPI_STORAGETYPE_FLOAT64}},
+	{NAME_FloatProperty,{1,HAPI_STORAGETYPE_FLOAT}},
+	{NAME_Int64Property,{1,HAPI_STORAGETYPE_INT64}},
+	{NAME_UInt32Property,{1,HAPI_STORAGETYPE_INT}},
+	{NAME_UInt64Property,{1,HAPI_STORAGETYPE_INT64}}
+	
+	// ,{"ObjectPropertyBase",{1,HAPI_STORAGETYPE_INT64}}
+	,{NAME_ObjectProperty,{1,HAPI_STORAGETYPE_INT64}}
+	// ,{"ObjectPtrProperty",{1,HAPI_STORAGETYPE_INT64}}
+	// ,{NAME_InterfaceProperty,{1,HAPI_STORAGETYPE_INT64}}
+	,{"WeakObjectProperty",{1,HAPI_STORAGETYPE_INT64}}
+	// ,{NAME_MulticastDelegateProperty,{1,HAPI_STORAGETYPE_INT64}}
+	// ,{"MulticastSparseDelegateProperty",{1,HAPI_STORAGETYPE_INT64}}
+	// ,{"MulticastInlineDelegateProperty",{1,HAPI_STORAGETYPE_INT64}}
+	,{NAME_SoftObjectProperty,{1,HAPI_STORAGETYPE_INT64}}
+	,{"SoftClassProperty",{1,HAPI_STORAGETYPE_STRING}}
+	// ,{NAME_DelegateProperty,{1,HAPI_STORAGETYPE_INT64}}
+	,{"FieldPathProperty",{1,HAPI_STORAGETYPE_STRING}}
+	,{"ClassProperty",{1,HAPI_STORAGETYPE_INT64}}
+};
+
 #pragma endregion Template
 
 FDataGather_ExportInfo::FDataGather_ExportInfo(const FProperty* Property)
@@ -215,32 +253,42 @@ FDataGather_ExportInfo::FDataGather_ExportInfo(const FProperty* Property)
 		ConvertTo = ConvertSpecialization.ToStruct;
 	if(const auto* Re = PodStructsStorageInfo.Find(ConvertTo->GetFName()))
 	{
+		Info.storage = Re->StorageType;
 		Info.tupleSize = Re->ElementTupleCount;
 		CoordConvertUE2Hou = Re->CoordConvertUE2Hou;
 		CoordConvertHou2Ue = Re->CoordConvertUE2Hou;
 	}
+	// Export String will Override POD Default Export Method because it create a StringExport
 }
 
-
-
-void FDataGather_ExportInfo::Init(const FDataGather_Struct& InParent)
+void FDataGather_PODExport::Init(const FDataGather_Struct& InParent)
 {
 	bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
 	const FProperty* InputProperty = GetContainerElementRepresentProperty();
-	FillHapiAttribInfo(Info,InputProperty);
+	FillHapiAttribInfo(Info,InputProperty,bInArrayOfStruct);
 }
 
-void FDataGather_ExportInfo::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty)
+void FDataGather_ExportInfo::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
 {
-	FHoudiniApi::AttributeInfo_Init(&AttributeInfo);
 	if(const FArrayProperty* InArrayProperty = CastField<const FArrayProperty>(InProperty))
 	{
-		FillHapiAttribInfo(AttributeInfo,InArrayProperty->Inner);
-		
+		// if(InbInArrayOfStruct)
+		// {
+		// 	AttributeInfo.storage = HAPI_STORAGETYPE_STRING;
+		// }
+		FillHapiAttribInfo(AttributeInfo,InArrayProperty->Inner,InbInArrayOfStruct);
+		AttributeInfo.storage = HapiStorageTraits::GetArrayStorage(AttributeInfo.storage);
+		return;
 	}
-	if(const FNumericProperty* InNumProp = CastField<const FNumericProperty>(InProperty))
+	const FName& FieldName = InProperty->GetClass()->GetFName();
+	// Check AttributeInfo_Init set storage to HAPI_STORAGETYPE_INVALID
+	// Otherwise the export storage is already check
+	if(AttributeInfo.storage!=HAPI_STORAGETYPE_INVALID)
+		return;
+	if(const auto re = PropertyStorageInfo.Find(FieldName))
 	{
-		InNumProp->GetClass();
+		AttributeInfo.storage = re->StorageType;
+		AttributeInfo.tupleSize = re->StorageType;
 	}
-	
+	// Todo add some key word detect to scale property value by CoordConvertUE2Hou and CoordConvertHou2UE
 }

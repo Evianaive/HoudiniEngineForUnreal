@@ -6,13 +6,16 @@
 #include "InstancedStruct.h"
 #include "HAPI/HAPI_Common.h"
 #include "Misc/TVariant.h"
-#include "UnrealStructExpand.generated.h"
+//#include "UnrealStructExpand.generated.h"
 
 
-struct FInstancedStruct;
+// struct FInstancedStruct;
 struct FStructConvertSpecialization
 {
-	FStructConvertSpecialization();
+	// FStructConvertSpecialization()
+	// {
+	// 	ConvertTo = ConvertBack = [](const uint8*){return FInstancedStruct();};
+	// };
 	using Func = FInstancedStruct(const uint8*);
 	UScriptStruct* ToStruct {nullptr};
 	Func* ConvertTo {nullptr};
@@ -32,33 +35,33 @@ struct FStructConvertSpecialization
 		Specialization.ConvertBack = InConvertBack;
 		Specialization.bExportString = InbExportString;
 	}
-	template<typename TFromStruct,typename TToStruct>
-	static void RegisterConvertFunc(bool InbExportString = false)
-	{
-		RegisterConvertFunc(
-		TBaseStructure<TFromStruct>::Get(),
-		TBaseStructure<TToStruct>::Get(),
-		[](const uint8* InData)
-		{
-			FInstancedStruct ToStructInstance;
-			ToStructInstance.InitializeAs<TToStruct>(*(reinterpret_cast<TFromStruct*>(InData)));
-			return ToStructInstance;
-		},
-		[](const uint8* InData){
-			FInstancedStruct BackStructInstance;
-			if constexpr (TIsConstructible<TFromStruct,TToStruct>::Value)
-			{
-				BackStructInstance.InitializeAs<TFromStruct>(*(reinterpret_cast<TToStruct*>(InData)));
-			}
-			else
-			{
-				BackStructInstance.InitializeAs<TFromStruct>((reinterpret_cast<TToStruct*>(InData))->ConvertBack());
-			}
-			return BackStructInstance;
-		},
-		InbExportString);
-	}
-	static inline TMap<UScriptStruct*,FStructConvertSpecialization> RegisteredSpecializations;
+	// template<typename TFromStruct,typename TToStruct>
+	// static void RegisterConvertFunc(bool InbExportString = false)
+	// {
+	// 	RegisterConvertFunc(
+	// 	TBaseStructure<TFromStruct>::Get(),
+	// 	TBaseStructure<TToStruct>::Get(),
+	// 	[](const uint8* InData)
+	// 	{
+	// 		FInstancedStruct ToStructInstance;
+	// 		ToStructInstance.InitializeAs<TToStruct>(*(reinterpret_cast<TFromStruct*>(InData)));
+	// 		return ToStructInstance;
+	// 	},
+	// 	[](const uint8* InData){
+	// 		FInstancedStruct BackStructInstance;
+	// 		if constexpr (TIsConstructible<TFromStruct,TToStruct>::Value)
+	// 		{
+	// 			BackStructInstance.InitializeAs<TFromStruct>(*(reinterpret_cast<TToStruct*>(InData)));
+	// 		}
+	// 		else
+	// 		{
+	// 			BackStructInstance.InitializeAs<TFromStruct>((reinterpret_cast<TToStruct*>(InData))->ConvertBack());
+	// 		}
+	// 		return BackStructInstance;
+	// 	},
+	// 	InbExportString);
+	// }
+	static TMap<UScriptStruct*,FStructConvertSpecialization> RegisteredSpecializations;
 };
 
 struct FDataGather_Struct;
@@ -149,12 +152,13 @@ struct FDataGather_Base
 	struct FStorageInfo
 	{
 		int32 ElementTupleCount;
-		HAPI_StorageType StorageType;
+		HAPI_StorageType StorageType;	
 		CoordConvertFuncType* CoordConvertUE2Hou {nullptr};
 		CoordConvertFuncType* CoordConvertHou2Ue {nullptr};	
 	};
 	/*Attrib info stored in POD Container(FScriptArray)*/
 	static TMap<FName,FStorageInfo> PodStructsStorageInfo;
+	static TMap<FName,FStorageInfo> PropertyStorageInfo;
 
 	// static int32 HAPI_StorageTypeSizes[HAPI_STORAGETYPE_MAX];
 };
@@ -162,8 +166,7 @@ struct FDataGather_Base
 struct FDataGather_ExportInfo : public FDataGather_Base
 {
 	explicit FDataGather_ExportInfo(const FProperty* Property);
-	void Init(const FDataGather_Struct& InParent);
-	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty);
+	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
 	HAPI_AttributeInfo Info {};
 	CoordConvertFuncType* CoordConvertUE2Hou {nullptr};
 	CoordConvertFuncType* CoordConvertHou2Ue {nullptr};	
@@ -176,6 +179,7 @@ struct FDataGather_PODExport : public FDataGather_ExportInfo
 	{
 		
 	}
+	void Init(const FDataGather_Struct& InParent);
 	FScriptArray Container;
 };
 
@@ -184,9 +188,11 @@ struct FDataGather_StringExport : public FDataGather_ExportInfo
 	FDataGather_StringExport(const FProperty* Property)
 		:FDataGather_ExportInfo(Property)
 	{
-		
+		Info.storage = HAPI_STORAGETYPE_STRING;
+		Info.tupleSize = 0;
 	}
 	TArray<FString> Container;
+	void Init(const FDataGather_Struct& InParent){};
 	/*Todo Struct Export by Actual Struct*/
 };
 
@@ -278,12 +284,23 @@ struct FDataGather_Struct : public FDataGather_Base
 		NewChild.Init(*this);
 		return NewChild;
 	}
+	
+	template<typename TVariant,typename... TArgs>
+	TVariant* Set(int32 Index, TArgs&&... Args)
+	{
+		if(!Children.IsValidIndex(Index))
+			return nullptr;
+		Children[Index].Set<TVariant>(Forward<TArgs>(Args)...);
+		TVariant& NewChild = Children[Index].Get<TVariant>();
+		NewChild.Init(*this);
+		return &NewChild;
+	}
 	template<typename TVisitor>
 	void Accept(TVisitor&& Visitor)
 	{
 		for(auto& Child : Children)
 		{
-			Visitor.Visit(Child);
+			::Visit(Visitor,Child);
 		}
 	}
 };
@@ -312,19 +329,17 @@ private:
 			
 			if(bSwitchToString)
 			{
-				CurrentVisitStructExport->Children[ChildId].Set<FDataGather_StringExport>(InputProperty);
-				//Todo Post Set? Or Automatic down in construct
+				CurrentVisitStructExport->Set<FDataGather_StringExport>(ChildId,InputProperty);
 			}
 			else
 			{
-				CurrentVisitStructExport->Children[ChildId].Set<FDataGather_PODExport>(InputProperty);
-				//Todo Post Set?
+				CurrentVisitStructExport->Set<FDataGather_PODExport>(ChildId,InputProperty);
 			}
 		}
 		ExportIndicesInStructWithEnum.Reset();
 	}
-
-	void Visit(FDataGather_Struct& Struct)
+public:
+	void operator()(FDataGather_Struct& Struct)
 	{
 		if(CurrentVisitStructExport)
 		{
@@ -340,12 +355,12 @@ private:
 			CurrentVisitStructExport = nullptr;
 			while (WaitToProcess.Num())
 			{
-				Visit(*WaitToProcess.Pop());
+				operator()(*WaitToProcess.Pop());
 			}
 		}
 	}
 	template<typename T>
-	void Visit(T& Exporter)
+	void operator()(T& Exporter)
 	{
 		constexpr bool bStringContainer = std::is_same_v<T,FDataGather_StringExport>;
 		if(Exporter.FromEnum)
@@ -361,15 +376,16 @@ private:
 
 struct TGatherDataVisitor
 {
-	void Visit(FDataGather_Struct& Struct)
+public:
+	void operator()(FDataGather_Struct& Struct)
 	{
 		
 	}
-	void Visit(FDataGather_PODExport& PODData)
+	void operator()(FDataGather_PODExport& PODData)
 	{
 		
 	}
-	void Visit(FDataGather_StringExport& String)
+	void operator()(FDataGather_StringExport& String)
 	{
 		
 	}
