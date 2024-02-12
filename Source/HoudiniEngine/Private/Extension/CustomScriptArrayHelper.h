@@ -412,18 +412,6 @@ private:
 			}
 		}
 	}
-//
-	// void PackElement()
-	// {
-	// 	StorePackSize = 1;
-	// 	//Todo
-	// }
-	// void UnPackElement(int32 InPackSize)
-	// {
-	// 	StorePackSize = InPackSize;
-	// 	//Todo
-	// }
-//
 	const UScriptStruct* InnerStruct;
 	const FProperty* InnerProperty;
 	
@@ -435,7 +423,15 @@ private:
 	uint32 ElementAlignment;
 	/*we construct ScriptArrayHelper from inner property directly, but ArrayFlags is a property of FArrayProperty*/
 	EArrayPropertyFlags ArrayFlags;
-	// int32 StorePackSize;
+	int32 StorePackSize;
 public:
-	int32 GetElementSize() const {return ElementSize;} 
+	int32 GetElementSize() const {return ElementSize;}
+	const FScriptArray& GetArray(){return HeapArray;}
+
+	void PackElement(int32 InPackSize);
+	void UnPackElement(int32 InPackSize);	
+	int32 GetStorePackSize() const
+	{
+		return StorePackSize;
+	}	
 };

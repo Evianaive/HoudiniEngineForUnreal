@@ -4,6 +4,7 @@
 
 #include "HapiStorageTypeTraits.h"
 #include "HoudiniApi.h"
+#include "HoudiniEngineUtilsExtenstion.h"
 
 
 TMap<UScriptStruct*,FStructConvertSpecialization> FStructConvertSpecialization::RegisteredSpecializations;
@@ -291,16 +292,11 @@ void FDataGather_PODExport::Init(const FDataGather_Struct& InParent)
 	const FProperty* InputProperty = GetContainerElementRepresentProperty();
 	FillHapiAttribInfo(Info,InputProperty,bInArrayOfStruct);
 }
-
-// void FDataGather_StringExport::Init(const FDataGather_Struct& InParent)
-// {
-// 	FDataGather_ExportInfo::Init(InParent);
-// }
-
+template<bool bAddInfoCount>
 void FDataGather_PODExport::PropToContainer(const uint8* Ptr)
 {
 	// Info.tupleSize;
-	uint8* NewElem = Container.GetRawPtr(Container.AddValue());
+	uint8* NewElem = ContainerHelper.GetRawPtr(ContainerHelper.AddValue());
 	if(ConvertSpecialization.ToStruct)
 	{
 		const auto ConvertResult = ConvertSpecialization.ConvertTo(Ptr);
@@ -309,7 +305,9 @@ void FDataGather_PODExport::PropToContainer(const uint8* Ptr)
 	else
 	{
 		FMemory::Memcpy(NewElem,Ptr,Property->ElementSize);
-	}	
+	}
+	if constexpr (bAddInfoCount)
+		Info.count++;
 }
 
 void FDataGather_PODExport::ArrayPropToContainer(const uint8* Ptr)
@@ -318,13 +316,13 @@ void FDataGather_PODExport::ArrayPropToContainer(const uint8* Ptr)
 		return;
 	FScriptArrayHelper TempHelper(ArrayProperty,Ptr);
 	const int32 Num = TempHelper.Num();
-	const int32 AddStart = Container.AddValues(Num);
+	const int32 AddStart = ContainerHelper.AddValues(Num);
 	
 	if(ConvertSpecialization.ToStruct)
 	{
 		for(int32 i = 0; i<Num; i++)
 		{
-			uint8* NewElem = Container.GetRawPtr(AddStart+i);
+			uint8* NewElem = ContainerHelper.GetRawPtr(AddStart+i);
 			Ptr = TempHelper.GetRawPtr(i);
 			const auto ConvertResult = ConvertSpecialization.ConvertTo(Ptr);
 			FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
@@ -332,11 +330,22 @@ void FDataGather_PODExport::ArrayPropToContainer(const uint8* Ptr)
 	}
 	else
 	{
-		uint8* NewElem = Container.GetRawPtr(AddStart);
+		uint8* NewElem = ContainerHelper.GetRawPtr(AddStart);
 		FMemory::Memcpy(NewElem,TempHelper.GetRawPtr(0),Property->ElementSize);
 	}
+	Info.count+=1;
+	Info.totalArrayElements+=Num;
 }
 
+void FDataGather_PODExport::UnpackArray()
+{
+	ContainerHelper.UnPackElement(Info.tupleSize);
+}
+
+void FDataGather_PODExport::PackArray()
+{
+	ContainerHelper.PackElement(ContainerHelper.GetStorePackSize());
+}
 #pragma region StringExport
 
 namespace Private
@@ -354,7 +363,7 @@ namespace Private
 		}
 	}
 }
-
+template<bool bAddInfoCount>
 void FDataGather_StringExport::PropToContainer(const uint8* Ptr)
 {
 	if(Property->IsA(FStrProperty::StaticClass()))
@@ -365,18 +374,22 @@ void FDataGather_StringExport::PropToContainer(const uint8* Ptr)
 	{
 		Private::ExportString(*this,Ptr,Container.AddDefaulted_GetRef());
 	}
+	if constexpr (bAddInfoCount)
+		Info.count++;
 }
 
 void FDataGather_StringExport::ArrayPropToContainer(const uint8* Ptr)
 {
+	int32 Num = 0;
 	if(Property->IsA(FStrProperty::StaticClass()))
 	{
-		Container.Append(*(reinterpret_cast<const TArray<FString>*>(Ptr)));	
+		Container.Append(*(reinterpret_cast<const TArray<FString>*>(Ptr)));
+		Num = reinterpret_cast<const TArray<FString>*>(Ptr)->Num();
 	}
 	else
 	{
 		FScriptArrayHelper TempHelper(ArrayProperty,Ptr);
-		const int32 Num = TempHelper.Num();
+		Num = TempHelper.Num();
 
 		const int32 AddStart = Container.AddZeroed(Num);
 		for(int32 i=0; i<Num; i++)
@@ -384,6 +397,24 @@ void FDataGather_StringExport::ArrayPropToContainer(const uint8* Ptr)
 			Private::ExportString(*this,TempHelper.GetRawPtr(i),Container[AddStart+i]);
 		}		
 	}
+	Info.count+=1;
+	Info.totalArrayElements+=Num;
+}
+
+FGatherDataVisitor::FGatherDataVisitor(const uint8* StructPtr)
+{
+	Reset(StructPtr);
+}
+void FGatherDataVisitor::Reset()
+{
+	Struct = nullptr;
+	bInArrayOfStruct = false;
+	AddElementCount = Normal;
+}
+void FGatherDataVisitor::Reset(const uint8* StructPtr)
+{
+	Ptr = StructPtr;
+	Reset();
 }
 
 #pragma endregion StringExport
@@ -412,3 +443,46 @@ void FDataGather_ExportInfo::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInf
 	}
 	// Todo add some key word detect to scale property value by CoordConvertUE2Hou and CoordConvertHou2UE
 }
+
+template <typename T>
+void FExportDataVisitor::operator()(T& Gather)
+{
+	// auto& Gather = reinterpret_cast<FDataGather_PODExport&>(Gather);
+	const FString String = Gather.GetInputProperty()->GetAuthoredName();
+	Gather.Info.owner = Owner;
+	
+	Gather.UnpackArray();
+
+	// We must add attribute before we set! 
+	FHoudiniApi::AddAttribute(SessionId,NodeId,PartId,TCHAR_TO_ANSI(*String),&Gather.Info);
+	FHoudiniEngineUtilsExtenstion::HapiSetAttribData(
+		Gather.GetContainer(),
+		SessionId,NodeId,PartId
+		,String,Gather.Info,
+		{&Gather.SizeFixedArray,bTryEncode});
+}
+template void FExportDataVisitor::operator()(FDataGather_PODExport& PODExport);
+template void FExportDataVisitor::operator()(FDataGather_StringExport& PODExport);
+
+template <typename T>
+void FImportDataVisitor::operator()(T& Gather)
+{
+	// auto& PODExport = reinterpret_cast<FDataGather_PODExport&>(PODExport);
+	const FString String = Gather.GetInputProperty()->GetAuthoredName();
+	
+	HAPI_AttributeInfo TempInfo;
+	FHoudiniApi::AttributeInfo_Init(&TempInfo);
+	FHoudiniApi::GetAttributeInfo(SessionId,NodeId,PartId,TCHAR_TO_ANSI(*String),Owner,&TempInfo);
+
+	//Todo Compare TempInfo with Gather.Info
+	
+	FHoudiniEngineUtilsExtenstion::HapiGetAttribData(
+		Gather.GetContainer(),
+		SessionId,NodeId,PartId
+		,String,Gather.Info,
+		&Gather.SizeFixedArray);
+	
+	Gather.PackArray();
+}
+template void FExportDataVisitor::operator()(FDataGather_PODExport& PODExport);
+template void FExportDataVisitor::operator()(FDataGather_StringExport& PODExport);

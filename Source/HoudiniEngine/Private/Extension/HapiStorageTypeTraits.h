@@ -7,6 +7,9 @@
 #define DECLARE_HAPI_STORAGE_TRAITS(Name)\
 static inline auto Export = &FHoudiniApi::SetAttribute##Name##Data;\
 static inline auto Import = &FHoudiniApi::GetAttribute##Name##Data;\
+
+#define DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(Name)\
+static inline auto UniqueExport = &FHoudiniApi::SetAttribute##Name##UniqueData;\
 // auto ExportUnique = &FHoudiniApi::SetAttribute##Name##Data\
 
 namespace HapiStorageTraits
@@ -43,14 +46,14 @@ namespace HapiStorageTraits
 template<HAPI_StorageType StorageType>
 struct FHapiStorageTraits;
 
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT>{enum{Size=4};using Type = int32;DECLARE_HAPI_STORAGE_TRAITS(Int)};
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT64>{enum{Size=8};using Type = int64;DECLARE_HAPI_STORAGE_TRAITS(Int64)};
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_FLOAT>{enum{Size=4};using Type = float;DECLARE_HAPI_STORAGE_TRAITS(Float)};
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_FLOAT64>{enum{Size=8};using Type = double;DECLARE_HAPI_STORAGE_TRAITS(Float64)};
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_STRING>{enum{Size=24};using Type = FString;DECLARE_HAPI_STORAGE_TRAITS(String)};
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_UINT8>{enum{Size=1};using Type = uint8;DECLARE_HAPI_STORAGE_TRAITS(UInt8)};
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT8>{enum{Size=1};using Type = int8;DECLARE_HAPI_STORAGE_TRAITS(Int8)};
-template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT16>{enum{Size=2};using Type = int16;DECLARE_HAPI_STORAGE_TRAITS(Int16)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT>{enum{Size=4};using Type = int32;DECLARE_HAPI_STORAGE_TRAITS(Int);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(Int)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT64>{enum{Size=8};using Type = int64;DECLARE_HAPI_STORAGE_TRAITS(Int64);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(Int64)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_FLOAT>{enum{Size=4};using Type = float;DECLARE_HAPI_STORAGE_TRAITS(Float);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(Float)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_FLOAT64>{enum{Size=8};using Type = double;DECLARE_HAPI_STORAGE_TRAITS(Float64);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(Float64)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_STRING>{enum{Size=24};using Type = FString;DECLARE_HAPI_STORAGE_TRAITS(String);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(String)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_UINT8>{enum{Size=1};using Type = uint8;DECLARE_HAPI_STORAGE_TRAITS(UInt8);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(UInt8)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT8>{enum{Size=1};using Type = int8;DECLARE_HAPI_STORAGE_TRAITS(Int8);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(Int8)};
+template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT16>{enum{Size=2};using Type = int16;DECLARE_HAPI_STORAGE_TRAITS(Int16);DECLARE_HAPI_UNIQUE_EXPORT_STORAGE_TRAITS(Int16)};
 template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT_ARRAY>{enum{Size=4};using Type = int32;DECLARE_HAPI_STORAGE_TRAITS(IntArray)};
 template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_INT64_ARRAY>{enum{Size=8};using Type = int64;DECLARE_HAPI_STORAGE_TRAITS(Int64Array)};
 template<> struct FHapiStorageTraits<HAPI_STORAGETYPE_FLOAT_ARRAY>{enum{Size=4};using Type = float;DECLARE_HAPI_STORAGE_TRAITS(FloatArray)};

@@ -138,6 +138,14 @@ struct FDataGather_Base
 			ConvertSpecialization = *Re; 
 		}
 	}
+protected:
+	// Todo Change all init to init by parent! Call this in derived class
+	void Init(const FDataGather_Struct& InParent)
+	{
+		ParentStruct = const_cast<FDataGather_Struct*>(&InParent);
+	}
+	FDataGather_Struct* ParentStruct {nullptr};
+public:
 	bool bInArrayOfStruct {false};
 	int32 OffsetInParentStruct {0};
 	
@@ -200,22 +208,28 @@ struct FDataGather_ExportInfo : public FDataGather_Base
 	HAPI_AttributeInfo Info {};
 	TArray<int32> SizeFixedArray;
 	CoordConvertFuncType* CoordConvertUE2Hou {nullptr};
-	CoordConvertFuncType* CoordConvertHou2Ue {nullptr};	
+	CoordConvertFuncType* CoordConvertHou2Ue {nullptr};
 };
 
 struct FDataGather_PODExport : public FDataGather_ExportInfo
 {
 	FDataGather_PODExport(const FProperty* InProperty)
 		:FDataGather_ExportInfo(InProperty) // Here we have already get the tuple size and hapi_storage
-		,Container(Property,ConvertSpecialization.ToStruct)
+		,ContainerHelper(Property,ConvertSpecialization.ToStruct)
 	{
 		// add function to process property we pass in here to convert to hapi_storage type and tuple size?
 	}
 	// FScriptArray Container;
-	FCustomScriptArrayHelper Container;
+	FCustomScriptArrayHelper ContainerHelper;
 	void Init(const FDataGather_Struct& InParent);
+	template<bool bAddInfoCount = true>
 	void PropToContainer(const uint8* Ptr);
 	void ArrayPropToContainer(const uint8* Ptr);
+	void* GetContainer(){return &const_cast<FScriptArray&>(ContainerHelper.GetArray());};
+	void* GetContainerRawPtr(){return ContainerHelper.GetRawPtr();};
+	
+	void UnpackArray();
+	void PackArray();
 };
 
 struct FDataGather_StringExport : public FDataGather_ExportInfo
@@ -229,8 +243,14 @@ struct FDataGather_StringExport : public FDataGather_ExportInfo
 	TArray<FString> Container;
 	// void Init(const FDataGather_Struct& InParent);
 	/*Todo Struct Export by Actual Struct*/
+	template<bool bAddInfoCount = true>
 	void PropToContainer(const uint8* Ptr);
 	void ArrayPropToContainer(const uint8* Ptr);
+	void* GetContainer(){return &Container;}
+	void* GetContainerRawPtr(){return Container.GetData();};
+	
+	void UnpackArray() const{};
+	void PackArray() const{};
 };
 
 struct FDataGather_Struct : public FDataGather_Base
@@ -238,7 +258,8 @@ struct FDataGather_Struct : public FDataGather_Base
 	FDataGather_Struct(const UScriptStruct* BaseStruct)
 		:FDataGather_Base(BaseStruct)
 	{
-		
+		//Todo Rename
+		Init2();
 	}
 	FDataGather_Struct(const FProperty* Property)
 		:FDataGather_Base(Property)
@@ -252,6 +273,14 @@ struct FDataGather_Struct : public FDataGather_Base
 	// {
 	// 	bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
 	// }
+	void Init2()
+	{
+		const UScriptStruct* InitStruct = ConvertSpecialization.ToStruct? ConvertSpecialization.ToStruct : FromStruct;
+		for(const auto* Prop : TFieldRange<FProperty>(InitStruct))
+		{
+			MakeChild(Prop);
+		}
+	}
 	/*Todo 将parent struct的参数放到init里，并且为每个类都配一个init用于初始化 HAPI_AttributeInfo*/
 	void Init(const FDataGather_Struct& InParent)
 	{
@@ -352,9 +381,9 @@ struct FDataGather_Struct : public FDataGather_Base
 	}
 };
 
-struct TSwitchEnumContainerVisitor
+struct FSwitchEnumContainerVisitor
 {
-	TSwitchEnumContainerVisitor(bool InbSwitchToString)
+	FSwitchEnumContainerVisitor(bool InbSwitchToString)
 	:bSwitchToString(InbSwitchToString)
 	{}
 	bool bSwitchToString;	
@@ -421,14 +450,22 @@ public:
 	}
 };
 
-struct TGatherDataVisitor
+struct FGatherDataVisitor
 {
-	TGatherDataVisitor(const uint8* StructPtr);
-	uint8* Ptr {nullptr};
-	UScriptStruct* Struct {nullptr};
-	bool bInArrayOfStruct {false};
-	int32 AddElementCount {-1};
+	FGatherDataVisitor(const uint8* StructPtr);
+	const uint8* Ptr;
+	UScriptStruct* Struct;
+	bool bInArrayOfStruct;
+	int32 AddElementCount;
 public:
+	enum
+	{
+		InArrayOfStructSignal = -1,
+		Normal = -2
+	};
+	void Reset();
+	void Reset(const uint8* StructPtr);
+	
 	void ConvertPtr(FDataGather_Struct& StructExport, FInstancedStruct& OutInstanceStruct)
 	{
 		if(StructExport.ConvertSpecialization.ToStruct)
@@ -453,12 +490,13 @@ public:
 				ConvertPtr(StructExport,ConvertResult);
 				StructExport.Accept(*this);				
 			}
-			AddElementCount = -1;
+			AddElementCount = InArrayOfStructSignal;
 			TGuardValue GuardAddCount(AddElementCount,Helper.Num());
 			StructExport.Accept(*this);
 		}
 		else
 		{
+			AddElementCount = Normal;
 			ConvertPtr(StructExport,ConvertResult);
 			StructExport.Accept(*this);
 		}
@@ -468,7 +506,8 @@ public:
 	{
 		FDataGather_ExportInfo& AsExport = PODExport;
 		TGuardValue GuardPtr(Ptr,Ptr+AsExport.OffsetInParentStruct);
-		if(AddElementCount!=-1)
+		
+		if(AddElementCount>InArrayOfStructSignal)
 		{
 			AsExport.SizeFixedArray.Add(AddElementCount);
 			AsExport.Info.totalArrayElements += AddElementCount;
@@ -485,7 +524,7 @@ public:
 			}
 			else
 			{
-				PODExport.PropToContainer(Ptr);
+				AddElementCount==Normal?PODExport.PropToContainer(Ptr):PODExport.PropToContainer<false>(Ptr);
 			}
 		}
 	}
@@ -510,4 +549,35 @@ public:
 	// 		}		
 	// 	}
 	// }
+};
+
+struct FExportDataVisitor
+{
+	const HAPI_Session* SessionId {nullptr};
+	HAPI_NodeId NodeId {0};
+	HAPI_AttributeOwner Owner {HAPI_AttributeOwner::HAPI_ATTROWNER_INVALID};
+	HAPI_PartId PartId {0};
+	bool bTryEncode {false};
+
+	void operator()(FDataGather_Struct& StructExport)
+	{
+		StructExport.Accept(*this);
+	}
+	template<typename Export>
+	void operator()(Export& Gather);
+};
+
+struct FImportDataVisitor
+{
+	const HAPI_Session* SessionId {nullptr};
+	HAPI_NodeId NodeId {0};
+	HAPI_AttributeOwner Owner {HAPI_AttributeOwner::HAPI_ATTROWNER_INVALID};
+	HAPI_PartId PartId {0};
+	
+	void operator()(FDataGather_Struct& StructExport)
+	{
+		StructExport.Accept(*this);
+	}
+	template<typename Export>
+	void operator()(Export& Gather);
 };
