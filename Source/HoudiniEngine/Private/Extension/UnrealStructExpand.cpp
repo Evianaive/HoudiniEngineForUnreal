@@ -208,6 +208,7 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PodStructsSto
 
 TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PropertyStorageInfo = 
 {
+	//Todo use this map directly map to corresponding container. 
 	{NAME_NameProperty,{1,HAPI_STORAGETYPE_STRING}},
 	{NAME_TextProperty,{1,HAPI_STORAGETYPE_STRING}},
 	{NAME_StrProperty,{1,HAPI_STORAGETYPE_STRING}},
@@ -215,13 +216,17 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PropertyStora
 	// for other struct property that is not POD but export whole struct together by FDataGather_ExportInfo
 	// can only be string, but actually this will not be hit in FDataGather_PODExport::Init
 	{NAME_StructProperty,{1,HAPI_STORAGETYPE_STRING}},
-	{NAME_IntProperty,{1,HAPI_STORAGETYPE_INT}},
 	{NAME_BoolProperty,{1,HAPI_STORAGETYPE_INT8}},
 	{NAME_EnumProperty,{1,HAPI_STORAGETYPE_INT}},
-	{NAME_ByteProperty,{1,HAPI_STORAGETYPE_UINT8}},
+	
 	{NAME_DoubleProperty,{1,HAPI_STORAGETYPE_FLOAT64}},
 	{NAME_FloatProperty,{1,HAPI_STORAGETYPE_FLOAT}},
+	//Todo Int16 is not supported!!
+	{NAME_Int8Property,{1,HAPI_STORAGETYPE_INT8}},
+	{NAME_IntProperty,{1,HAPI_STORAGETYPE_INT}},
 	{NAME_Int64Property,{1,HAPI_STORAGETYPE_INT64}},
+	//Todo UInt16 is not supported!!
+	{NAME_ByteProperty,{1,HAPI_STORAGETYPE_UINT8}},
 	{NAME_UInt32Property,{1,HAPI_STORAGETYPE_INT}},
 	{NAME_UInt64Property,{1,HAPI_STORAGETYPE_INT64}}
 	
