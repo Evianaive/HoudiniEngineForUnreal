@@ -203,7 +203,6 @@ public:
 struct FDataGather_ExportInfo : public FDataGather_Base
 {
 	explicit FDataGather_ExportInfo(const FProperty* Property);
-	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
 	void Init(const FDataGather_Struct& InParent);
 	HAPI_AttributeInfo Info {};
 	TArray<int32> SizeFixedArray;
@@ -221,6 +220,7 @@ struct FDataGather_PODExport : public FDataGather_ExportInfo
 	}
 	// FScriptArray Container;
 	FCustomScriptArrayHelper ContainerHelper;
+	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
 	void Init(const FDataGather_Struct& InParent);
 	template<bool bAddInfoCount = true>
 	void PropToContainer(const uint8* Ptr);

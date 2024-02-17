@@ -289,7 +289,7 @@ void FDataGather_ExportInfo::Init(const FDataGather_Struct& InParent)
 void FDataGather_PODExport::Init(const FDataGather_Struct& InParent)
 {
 	FDataGather_ExportInfo::Init(InParent);
-	const FProperty* InputProperty = GetContainerElementRepresentProperty();
+	const FProperty* InputProperty = GetInputProperty();
 	FillHapiAttribInfo(Info,InputProperty,bInArrayOfStruct);
 }
 template<bool bAddInfoCount>
@@ -419,15 +419,17 @@ void FGatherDataVisitor::Reset(const uint8* StructPtr)
 
 #pragma endregion StringExport
 
-void FDataGather_ExportInfo::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
+void FDataGather_PODExport::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
 {
-	if(const FArrayProperty* InArrayProperty = CastField<const FArrayProperty>(InProperty))
+	const FArrayProperty* InArrayProperty = CastField<const FArrayProperty>(InProperty);
+	if(InArrayProperty || InbInArrayOfStruct)
 	{
-		// if(InbInArrayOfStruct)
-		// {
-		// 	AttributeInfo.storage = HAPI_STORAGETYPE_STRING;
-		// }
 		FillHapiAttribInfo(AttributeInfo,InArrayProperty->Inner,InbInArrayOfStruct);
+		if(InArrayProperty && InbInArrayOfStruct)
+		{
+			// This condition should never be fitted
+			AttributeInfo.storage = HAPI_STORAGETYPE_STRING;
+		}
 		AttributeInfo.storage = HapiStorageTraits::GetArrayStorage(AttributeInfo.storage);
 		return;
 	}
@@ -439,7 +441,7 @@ void FDataGather_ExportInfo::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInf
 	if(const auto re = PropertyStorageInfo.Find(FieldName))
 	{
 		AttributeInfo.storage = re->StorageType;
-		AttributeInfo.tupleSize = re->StorageType;
+		AttributeInfo.tupleSize = re->ElementTupleCount;
 	}
 	// Todo add some key word detect to scale property value by CoordConvertUE2Hou and CoordConvertHou2UE
 }
