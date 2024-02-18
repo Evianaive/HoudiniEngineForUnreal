@@ -76,18 +76,18 @@ struct FStructConvertSpecialization
 	static TMap<UScriptStruct*,FStructConvertSpecialization> RegisteredSpecializations;
 };
 
-struct FDataGather_Struct;
-struct FDataGather_PODExport;
-struct FDataGather_StringExport;
+struct FDataExchange_Struct;
+struct FDataExchange_POD;
+struct FDataExchange_String;
 
 using FDataGather_Variant = TVariant<
-	FDataGather_Struct,
-	FDataGather_PODExport,
-	FDataGather_StringExport>;
+	FDataExchange_Struct,
+	FDataExchange_POD,
+	FDataExchange_String>;
 
-struct FDataGather_Base
+struct FDataExchange_Base
 {
-	FDataGather_Base(const FProperty* InProperty)
+	FDataExchange_Base(const FProperty* InProperty)
 		: OffsetInParentStruct(InProperty->GetOffset_ForInternal())
 	{
 		if(const FArrayProperty* InArrayProperty = CastField<const FArrayProperty>(InProperty))
@@ -130,7 +130,7 @@ struct FDataGather_Base
 		return nullptr;
 	}
 
-	FDataGather_Base(const UScriptStruct* InBaseStruct)
+	FDataExchange_Base(const UScriptStruct* InBaseStruct)
 		:FromStruct(InBaseStruct)
 	{
 		if(const auto Re = FStructConvertSpecialization::RegisteredSpecializations.Find(FromStruct))
@@ -140,8 +140,8 @@ struct FDataGather_Base
 	}
 protected:
 	template<typename Derived>
-	void InitByParent(const FDataGather_Struct& InParent);
-	FDataGather_Struct* ParentStruct {nullptr};
+	void InitByParent(const FDataExchange_Struct& InParent);
+	FDataExchange_Struct* ParentStruct {nullptr};
 public:
 	bool bInArrayOfStruct {false};
 	int32 OffsetInParentStruct {0};
@@ -197,19 +197,19 @@ public:
 	// static int32 HAPI_StorageTypeSizes[HAPI_STORAGETYPE_MAX];
 };
 
-struct FDataGather_ExportInfo : public FDataGather_Base
+struct FDataExchange_Info : public FDataExchange_Base
 {
-	explicit FDataGather_ExportInfo(const FProperty* Property);
+	explicit FDataExchange_Info(const FProperty* Property);
 	HAPI_AttributeInfo Info {};
 	TArray<int32> SizeFixedArray;
 	CoordConvertFuncType* CoordConvertUE2Hou {nullptr};
 	CoordConvertFuncType* CoordConvertHou2Ue {nullptr};
 };
 
-struct FDataGather_PODExport : public FDataGather_ExportInfo
+struct FDataExchange_POD : public FDataExchange_Info
 {
-	FDataGather_PODExport(const FProperty* InProperty)
-		:FDataGather_ExportInfo(InProperty) // Here we have already get the tuple size and hapi_storage
+	FDataExchange_POD(const FProperty* InProperty)
+		:FDataExchange_Info(InProperty) // Here we have already get the tuple size and hapi_storage
 		,ContainerHelper(Property,ConvertSpecialization.ToStruct)
 	{
 		// add function to process property we pass in here to convert to hapi_storage type and tuple size?
@@ -227,10 +227,10 @@ struct FDataGather_PODExport : public FDataGather_ExportInfo
 	void PackArray();
 };
 
-struct FDataGather_StringExport : public FDataGather_ExportInfo
+struct FDataExchange_String : public FDataExchange_Info
 {
-	FDataGather_StringExport(const FProperty* Property)
-		:FDataGather_ExportInfo(Property)
+	FDataExchange_String(const FProperty* Property)
+		:FDataExchange_Info(Property)
 	{}
 	TArray<FString> Container;
 	// void Init(const FDataGather_Struct& InParent);
@@ -246,16 +246,16 @@ struct FDataGather_StringExport : public FDataGather_ExportInfo
 	void PackArray() const{};
 };
 
-struct FDataGather_Struct : public FDataGather_Base
+struct FDataExchange_Struct : public FDataExchange_Base
 {
-	FDataGather_Struct(const UScriptStruct* BaseStruct)
-		:FDataGather_Base(BaseStruct)
+	FDataExchange_Struct(const UScriptStruct* BaseStruct)
+		:FDataExchange_Base(BaseStruct)
 	{
 		//Todo Rename
 		MakeChildren();
 	}
-	FDataGather_Struct(const FProperty* Property)
-		:FDataGather_Base(Property)
+	FDataExchange_Struct(const FProperty* Property)
+		:FDataExchange_Base(Property)
 	{
 		bArrayOfStruct = (ArrayProperty != nullptr);
 	}
@@ -286,7 +286,7 @@ struct FDataGather_Struct : public FDataGather_Base
 			if(bArrayOfStruct || bInArrayOfStruct)
 			{
 				/*An Array Property in ArrayOfStruct*/
-				Add<FDataGather_StringExport>(InProp);
+				Add<FDataExchange_String>(InProp);
 			}
 			else
 			{
@@ -306,25 +306,25 @@ struct FDataGather_Struct : public FDataGather_Base
 			}
 			if(bExportString)
 			{
-				Add<FDataGather_StringExport>(FirstEnterProp);
+				Add<FDataExchange_String>(FirstEnterProp);
 			}
 			else if(PodStructsStorageInfo.Find(FinalStruct->GetFName()))
 			{
-				Add<FDataGather_PODExport>(FirstEnterProp);
+				Add<FDataExchange_POD>(FirstEnterProp);
 				//Todo this property doesn't match the struct if struct conversion is Specialization!
 			}
 			else
 			{
-				Add<FDataGather_Struct>(FirstEnterProp);
+				Add<FDataExchange_Struct>(FirstEnterProp);
 			}
 		}
 		else if (InProp->IsA(FNumericProperty::StaticClass()))
 		{
-			Add<FDataGather_PODExport>(FirstEnterProp);
+			Add<FDataExchange_POD>(FirstEnterProp);
 		}
 		else
 		{
-			Add<FDataGather_StringExport>(FirstEnterProp);
+			Add<FDataExchange_String>(FirstEnterProp);
 		}
 	}
 
@@ -333,7 +333,7 @@ struct FDataGather_Struct : public FDataGather_Base
 	{
 		TVariant& NewChild = (new (Children) FDataGather_Variant(TInPlaceType<TVariant>(),Forward<TArgs>(Args)...))->Get<TVariant>();
 		// avoid compile error
-		reinterpret_cast<FDataGather_Struct&>(NewChild).template InitByParent<TVariant>(*this);
+		reinterpret_cast<FDataExchange_Struct&>(NewChild).template InitByParent<TVariant>(*this);
 		return NewChild;
 	}
 	
@@ -345,7 +345,7 @@ struct FDataGather_Struct : public FDataGather_Base
 		Children[Index].Set<TVariant>(Forward<TArgs>(Args)...);
 		TVariant& NewChild = Children[Index].Get<TVariant>();
 		// avoid compile error
-		reinterpret_cast<FDataGather_Struct&>(NewChild).template InitByParent<TVariant>(*this);
+		reinterpret_cast<FDataExchange_Struct&>(NewChild).template InitByParent<TVariant>(*this);
 		return &NewChild;
 	}
 	template<typename TVisitor>
@@ -375,8 +375,8 @@ struct FSwitchEnumContainerVisitor
 private:
 	int32 Index {0};
 	TArray<int32> ExportIndicesInStructWithEnum;
-	FDataGather_Struct* CurrentVisitStructExport {nullptr};
-	TArray<FDataGather_Struct*> WaitToProcess;
+	FDataExchange_Struct* CurrentVisitStructExport {nullptr};
+	TArray<FDataExchange_Struct*> WaitToProcess;
 
 	void SwitchCurrentStructGatherEnumChild()
 	{
@@ -390,17 +390,17 @@ private:
 			
 			if(bSwitchToString)
 			{
-				CurrentVisitStructExport->Set<FDataGather_StringExport>(ChildId,InputProperty);
+				CurrentVisitStructExport->Set<FDataExchange_String>(ChildId,InputProperty);
 			}
 			else
 			{
-				CurrentVisitStructExport->Set<FDataGather_PODExport>(ChildId,InputProperty);
+				CurrentVisitStructExport->Set<FDataExchange_POD>(ChildId,InputProperty);
 			}
 		}
 		ExportIndicesInStructWithEnum.Reset();
 	}
 public:
-	void operator()(FDataGather_Struct& Struct)
+	void operator()(FDataExchange_Struct& Struct)
 	{
 		if(CurrentVisitStructExport)
 		{
@@ -423,7 +423,7 @@ public:
 	template<typename T>
 	void operator()(T& Exporter)
 	{
-		constexpr bool bStringContainer = std::is_same_v<T,FDataGather_StringExport>;
+		constexpr bool bStringContainer = std::is_same_v<T,FDataExchange_String>;
 		if(Exporter.FromEnum)
         {
 			if(bSwitchToString != bStringContainer)
@@ -435,9 +435,9 @@ public:
 	}
 };
 
-struct FGatherDataVisitor
+struct FUnfoldDataVisitor
 {
-	FGatherDataVisitor(const uint8* StructPtr);
+	FUnfoldDataVisitor(const uint8* StructPtr);
 	const uint8* Ptr;
 	UScriptStruct* Struct;
 	bool bInArrayOfStruct;
@@ -451,7 +451,7 @@ public:
 	void Reset();
 	void Reset(const uint8* StructPtr);
 	
-	void ConvertPtr(FDataGather_Struct& StructExport, FInstancedStruct& OutInstanceStruct)
+	void ConvertPtr(FDataExchange_Struct& StructExport, FInstancedStruct& OutInstanceStruct)
 	{
 		if(StructExport.ConvertSpecialization.ToStruct)
 		{
@@ -459,7 +459,7 @@ public:
 			Ptr = OutInstanceStruct.GetMutableMemory();
 		}
 	}
-	void operator()(FDataGather_Struct& StructExport)
+	void operator()(FDataExchange_Struct& StructExport)
 	{
 		// ScopeExitSupport::TScopeGuard<>();
 		// ON_SCOPE_EXIT{return;}
@@ -489,7 +489,7 @@ public:
 	template<typename Export>
 	void operator()(Export& PODExport)
 	{
-		FDataGather_ExportInfo& AsExport = PODExport;
+		FDataExchange_Info& AsExport = PODExport;
 		TGuardValue GuardPtr(Ptr,Ptr+AsExport.OffsetInParentStruct);
 		
 		if(AddElementCount>InArrayOfStructSignal)
@@ -544,7 +544,7 @@ struct FExportDataVisitor
 	HAPI_PartId PartId {0};
 	bool bTryEncode {false};
 
-	void operator()(FDataGather_Struct& StructExport)
+	void operator()(FDataExchange_Struct& StructExport)
 	{
 		StructExport.Accept(*this);
 	}
@@ -559,7 +559,7 @@ struct FImportDataVisitor
 	HAPI_AttributeOwner Owner {HAPI_AttributeOwner::HAPI_ATTROWNER_INVALID};
 	HAPI_PartId PartId {0};
 	
-	void operator()(FDataGather_Struct& StructExport)
+	void operator()(FDataExchange_Struct& StructExport)
 	{
 		StructExport.Accept(*this);
 	}

@@ -94,8 +94,8 @@ void AHoudiniEngineExtensionTestActor::Test()
 			Position, NodeId, 0, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint);
 	}
 	
-	FDataGather_Struct Gather{decltype(TestDatum)::ElementType::StaticStruct()};
-	FGatherDataVisitor GatherDataVisitor{nullptr};
+	FDataExchange_Struct Gather{decltype(TestDatum)::ElementType::StaticStruct()};
+	FUnfoldDataVisitor GatherDataVisitor{nullptr};
 	for (auto& Data: TestDatum)
 	{
 		GatherDataVisitor.Reset(reinterpret_cast<const uint8*>(&Data));

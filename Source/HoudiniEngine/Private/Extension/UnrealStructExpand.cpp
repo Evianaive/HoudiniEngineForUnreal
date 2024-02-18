@@ -145,7 +145,7 @@ static void Convert(uint8* Data)
 	ConvertInternal<bUE2Hou>(reinterpret_cast<DataType*>(Data));
 }
 
-TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PodStructsStorageInfo
+TMap<FName,FDataExchange_Info::FStorageInfo> FDataExchange_Base::PodStructsStorageInfo
 {
 	{NAME_Vector2D,{2,HAPI_STORAGETYPE_FLOAT64}},
 	{NAME_Vector2d,{2,HAPI_STORAGETYPE_FLOAT64}},
@@ -206,7 +206,7 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PodStructsSto
 	&TMatrixCoordConvert::ReOrderAndScale<float,false>}},
 };
 
-TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PropertyStorageInfo = 
+TMap<FName,FDataExchange_Info::FStorageInfo> FDataExchange_Base::PropertyStorageInfo = 
 {
 	//Todo use this map directly map to corresponding container. 
 	{NAME_NameProperty,{1,HAPI_STORAGETYPE_STRING}},
@@ -248,14 +248,14 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PropertyStora
 #pragma endregion Template
 
 template <typename Derived>
-void FDataGather_Base::InitByParent(const FDataGather_Struct& InParent)
+void FDataExchange_Base::InitByParent(const FDataExchange_Struct& InParent)
 {
-	ParentStruct = const_cast<FDataGather_Struct*>(&InParent);
+	ParentStruct = const_cast<FDataExchange_Struct*>(&InParent);
 	bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
-	if constexpr (std::is_same_v<FDataGather_Struct,Derived>)
+	if constexpr (std::is_same_v<FDataExchange_Struct,Derived>)
 	{
 		/*Todo 并且为每个类都配一个init用于初始化 HAPI_AttributeInfo*/
-		reinterpret_cast<FDataGather_Struct*>(this)->MakeChildren();
+		reinterpret_cast<FDataExchange_Struct*>(this)->MakeChildren();
 	}
 	else
 	{
@@ -265,7 +265,7 @@ void FDataGather_Base::InitByParent(const FDataGather_Struct& InParent)
 }
 
 template<bool bUE2Hou>
-void FDataGather_Base::PerformStructConversion(FInstancedStruct& Struct, const uint8* InPtr)
+void FDataExchange_Base::PerformStructConversion(FInstancedStruct& Struct, const uint8* InPtr)
 {
 	// auto* DestStruct = GetDestStruct<true>();
 	// if(!DestStruct)
@@ -278,13 +278,13 @@ void FDataGather_Base::PerformStructConversion(FInstancedStruct& Struct, const u
 }
 
 template<bool bUE2Hou>
-void FDataGather_Base::PerformCoordinateConversion(const uint8* InPtr)
+void FDataExchange_Base::PerformCoordinateConversion(const uint8* InPtr)
 {
 	
 }
 
-FDataGather_ExportInfo::FDataGather_ExportInfo(const FProperty* Property)
-:FDataGather_Base(Property)
+FDataExchange_Info::FDataExchange_Info(const FProperty* Property)
+:FDataExchange_Base(Property)
 {
 	/*Todo HAPI_Storage Change Switch*/
 	FHoudiniApi::AttributeInfo_Init(&Info);
@@ -304,7 +304,7 @@ FDataGather_ExportInfo::FDataGather_ExportInfo(const FProperty* Property)
 }
 
 template<bool bAddInfoCount>
-void FDataGather_PODExport::PropToContainer(const uint8* Ptr)
+void FDataExchange_POD::PropToContainer(const uint8* Ptr)
 {
 	// Info.tupleSize;
 	uint8* NewElem = ContainerHelper.GetRawPtr(ContainerHelper.AddValue());
@@ -321,7 +321,7 @@ void FDataGather_PODExport::PropToContainer(const uint8* Ptr)
 		Info.count++;
 }
 
-void FDataGather_PODExport::ArrayPropToContainer(const uint8* Ptr)
+void FDataExchange_POD::ArrayPropToContainer(const uint8* Ptr)
 {
 	if(!ArrayProperty)
 		return;
@@ -348,12 +348,12 @@ void FDataGather_PODExport::ArrayPropToContainer(const uint8* Ptr)
 	Info.totalArrayElements+=Num;
 }
 
-void FDataGather_PODExport::UnpackArray()
+void FDataExchange_POD::UnpackArray()
 {
 	ContainerHelper.UnPackElement(Info.tupleSize);
 }
 
-void FDataGather_PODExport::PackArray()
+void FDataExchange_POD::PackArray()
 {
 	ContainerHelper.PackElement(ContainerHelper.GetStorePackSize());
 }
@@ -361,7 +361,7 @@ void FDataGather_PODExport::PackArray()
 
 namespace Private
 {
-	void ExportString(FDataGather_StringExport& StringExport, const uint8* Ptr, FString& Value)
+	void ExportString(FDataExchange_String& StringExport, const uint8* Ptr, FString& Value)
 	{
 		if(StringExport.ConvertSpecialization.ToStruct)
 		{
@@ -375,7 +375,7 @@ namespace Private
 	}
 }
 template<bool bAddInfoCount>
-void FDataGather_StringExport::PropToContainer(const uint8* Ptr)
+void FDataExchange_String::PropToContainer(const uint8* Ptr)
 {
 	if(Property->IsA(FStrProperty::StaticClass()))
 	{
@@ -389,7 +389,7 @@ void FDataGather_StringExport::PropToContainer(const uint8* Ptr)
 		Info.count++;
 }
 
-void FDataGather_StringExport::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
+void FDataExchange_String::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
 {
 	auto* InArrayProperty = CastField<FArrayProperty>(InProperty);
 	// Export an array property to string is not supported if the array property is not in array of struct.
@@ -405,7 +405,7 @@ void FDataGather_StringExport::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeI
 	AttributeInfo.tupleSize = 1;
 }
 
-void FDataGather_StringExport::ArrayPropToContainer(const uint8* Ptr)
+void FDataExchange_String::ArrayPropToContainer(const uint8* Ptr)
 {
 	int32 Num = 0;
 	if(Property->IsA(FStrProperty::StaticClass()))
@@ -428,17 +428,17 @@ void FDataGather_StringExport::ArrayPropToContainer(const uint8* Ptr)
 	Info.totalArrayElements+=Num;
 }
 
-FGatherDataVisitor::FGatherDataVisitor(const uint8* StructPtr)
+FUnfoldDataVisitor::FUnfoldDataVisitor(const uint8* StructPtr)
 {
 	Reset(StructPtr);
 }
-void FGatherDataVisitor::Reset()
+void FUnfoldDataVisitor::Reset()
 {
 	Struct = nullptr;
 	bInArrayOfStruct = false;
 	AddElementCount = Normal;
 }
-void FGatherDataVisitor::Reset(const uint8* StructPtr)
+void FUnfoldDataVisitor::Reset(const uint8* StructPtr)
 {
 	Ptr = StructPtr;
 	Reset();
@@ -446,7 +446,7 @@ void FGatherDataVisitor::Reset(const uint8* StructPtr)
 
 #pragma endregion StringExport
 
-void FDataGather_PODExport::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
+void FDataExchange_POD::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
 {
 	const FArrayProperty* InArrayProperty = CastField<const FArrayProperty>(InProperty);
 	if(InArrayProperty || InbInArrayOfStruct)
@@ -499,8 +499,8 @@ void FExportDataVisitor::operator()(T& Gather)
 		,String,Gather.Info,
 		{&Gather.SizeFixedArray,bTryEncode});
 }
-template void FExportDataVisitor::operator()(FDataGather_PODExport& PODExport);
-template void FExportDataVisitor::operator()(FDataGather_StringExport& PODExport);
+template void FExportDataVisitor::operator()(FDataExchange_POD& PODExport);
+template void FExportDataVisitor::operator()(FDataExchange_String& PODExport);
 
 template <typename T>
 void FImportDataVisitor::operator()(T& Gather)
@@ -522,5 +522,5 @@ void FImportDataVisitor::operator()(T& Gather)
 	
 	Gather.PackArray();
 }
-template void FExportDataVisitor::operator()(FDataGather_PODExport& PODExport);
-template void FExportDataVisitor::operator()(FDataGather_StringExport& PODExport);
+template void FExportDataVisitor::operator()(FDataExchange_POD& PODExport);
+template void FExportDataVisitor::operator()(FDataExchange_String& PODExport);
