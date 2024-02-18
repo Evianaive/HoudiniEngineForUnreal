@@ -139,11 +139,8 @@ struct FDataGather_Base
 		}
 	}
 protected:
-	// Todo Change all init to init by parent! Call this in derived class
-	void Init(const FDataGather_Struct& InParent)
-	{
-		ParentStruct = const_cast<FDataGather_Struct*>(&InParent);
-	}
+	template<typename Derived>
+	void InitByParent(const FDataGather_Struct& InParent);
 	FDataGather_Struct* ParentStruct {nullptr};
 public:
 	bool bInArrayOfStruct {false};
@@ -203,7 +200,6 @@ public:
 struct FDataGather_ExportInfo : public FDataGather_Base
 {
 	explicit FDataGather_ExportInfo(const FProperty* Property);
-	void Init(const FDataGather_Struct& InParent);
 	HAPI_AttributeInfo Info {};
 	TArray<int32> SizeFixedArray;
 	CoordConvertFuncType* CoordConvertUE2Hou {nullptr};
@@ -221,7 +217,6 @@ struct FDataGather_PODExport : public FDataGather_ExportInfo
 	// FScriptArray Container;
 	FCustomScriptArrayHelper ContainerHelper;
 	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
-	void Init(const FDataGather_Struct& InParent);
 	template<bool bAddInfoCount = true>
 	void PropToContainer(const uint8* Ptr);
 	void ArrayPropToContainer(const uint8* Ptr);
@@ -236,13 +231,11 @@ struct FDataGather_StringExport : public FDataGather_ExportInfo
 {
 	FDataGather_StringExport(const FProperty* Property)
 		:FDataGather_ExportInfo(Property)
-	{
-		Info.storage = HAPI_STORAGETYPE_STRING;
-		Info.tupleSize = 1;
-	}
+	{}
 	TArray<FString> Container;
 	// void Init(const FDataGather_Struct& InParent);
 	/*Todo Struct Export by Actual Struct*/
+	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
 	template<bool bAddInfoCount = true>
 	void PropToContainer(const uint8* Ptr);
 	void ArrayPropToContainer(const uint8* Ptr);
@@ -259,7 +252,7 @@ struct FDataGather_Struct : public FDataGather_Base
 		:FDataGather_Base(BaseStruct)
 	{
 		//Todo Rename
-		Init2();
+		MakeChildren();
 	}
 	FDataGather_Struct(const FProperty* Property)
 		:FDataGather_Base(Property)
@@ -273,7 +266,8 @@ struct FDataGather_Struct : public FDataGather_Base
 	// {
 	// 	bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
 	// }
-	void Init2()
+	
+	void MakeChildren()
 	{
 		const UScriptStruct* InitStruct = ConvertSpecialization.ToStruct? ConvertSpecialization.ToStruct : FromStruct;
 		for(const auto* Prop : TFieldRange<FProperty>(InitStruct))
@@ -281,17 +275,6 @@ struct FDataGather_Struct : public FDataGather_Base
 			MakeChild(Prop);
 		}
 	}
-	/*Todo 将parent struct的参数放到init里，并且为每个类都配一个init用于初始化 HAPI_AttributeInfo*/
-	void Init(const FDataGather_Struct& InParent)
-	{
-		bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
-		const UScriptStruct* InitStruct = ConvertSpecialization.ToStruct? ConvertSpecialization.ToStruct : FromStruct;
-		
-		for(const auto* Prop : TFieldRange<FProperty>(InitStruct))
-		{
-			MakeChild(Prop);
-		}
-	}	
 
 	void MakeChild(const FProperty* InProp, const FArrayProperty* InArrayProp = nullptr)
 	{
@@ -349,7 +332,8 @@ struct FDataGather_Struct : public FDataGather_Base
 	TVariant& Add(TArgs&&... Args)
 	{
 		TVariant& NewChild = (new (Children) FDataGather_Variant(TInPlaceType<TVariant>(),Forward<TArgs>(Args)...))->Get<TVariant>();
-		NewChild.Init(*this);
+		// avoid compile error
+		reinterpret_cast<FDataGather_Struct&>(NewChild).template InitByParent<TVariant>(*this);
 		return NewChild;
 	}
 	
@@ -360,7 +344,8 @@ struct FDataGather_Struct : public FDataGather_Base
 			return nullptr;
 		Children[Index].Set<TVariant>(Forward<TArgs>(Args)...);
 		TVariant& NewChild = Children[Index].Get<TVariant>();
-		NewChild.Init(*this);
+		// avoid compile error
+		reinterpret_cast<FDataGather_Struct&>(NewChild).template InitByParent<TVariant>(*this);
 		return &NewChild;
 	}
 	template<typename TVisitor>

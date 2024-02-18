@@ -247,6 +247,23 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PropertyStora
 
 #pragma endregion Template
 
+template <typename Derived>
+void FDataGather_Base::InitByParent(const FDataGather_Struct& InParent)
+{
+	ParentStruct = const_cast<FDataGather_Struct*>(&InParent);
+	bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
+	if constexpr (std::is_same_v<FDataGather_Struct,Derived>)
+	{
+		/*Todo 并且为每个类都配一个init用于初始化 HAPI_AttributeInfo*/
+		reinterpret_cast<FDataGather_Struct*>(this)->MakeChildren();
+	}
+	else
+	{
+		const FProperty* InputProperty = GetInputProperty();
+		Derived::FillHapiAttribInfo(reinterpret_cast<Derived*>(this)->Info,InputProperty,bInArrayOfStruct);	
+	}
+}
+
 template<bool bUE2Hou>
 void FDataGather_Base::PerformStructConversion(FInstancedStruct& Struct, const uint8* InPtr)
 {
@@ -286,17 +303,6 @@ FDataGather_ExportInfo::FDataGather_ExportInfo(const FProperty* Property)
 	// Export String will Override POD Default Export Method because it create a StringExport
 }
 
-void FDataGather_ExportInfo::Init(const FDataGather_Struct& InParent)
-{
-	bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
-}
-
-void FDataGather_PODExport::Init(const FDataGather_Struct& InParent)
-{
-	FDataGather_ExportInfo::Init(InParent);
-	const FProperty* InputProperty = GetInputProperty();
-	FillHapiAttribInfo(Info,InputProperty,bInArrayOfStruct);
-}
 template<bool bAddInfoCount>
 void FDataGather_PODExport::PropToContainer(const uint8* Ptr)
 {
@@ -383,6 +389,22 @@ void FDataGather_StringExport::PropToContainer(const uint8* Ptr)
 		Info.count++;
 }
 
+void FDataGather_StringExport::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
+{
+	auto* InArrayProperty = CastField<FArrayProperty>(InProperty);
+	// Export an array property to string is not supported if the array property is not in array of struct.
+	// So it must be exported as string array
+	if(InbInArrayOfStruct || InArrayProperty)
+	{
+		AttributeInfo.storage = HAPI_STORAGETYPE_STRING_ARRAY;	
+	}
+	else
+	{
+		AttributeInfo.storage = HAPI_STORAGETYPE_STRING;	
+	}
+	AttributeInfo.tupleSize = 1;
+}
+
 void FDataGather_StringExport::ArrayPropToContainer(const uint8* Ptr)
 {
 	int32 Num = 0;
@@ -429,11 +451,18 @@ void FDataGather_PODExport::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo
 	const FArrayProperty* InArrayProperty = CastField<const FArrayProperty>(InProperty);
 	if(InArrayProperty || InbInArrayOfStruct)
 	{
-		FillHapiAttribInfo(AttributeInfo,InArrayProperty->Inner,InbInArrayOfStruct);
 		if(InArrayProperty && InbInArrayOfStruct)
 		{
 			// This condition should never be fitted
 			AttributeInfo.storage = HAPI_STORAGETYPE_STRING;
+		}
+		else if(InArrayProperty)
+		{
+			FillHapiAttribInfo(AttributeInfo,InArrayProperty->Inner,InbInArrayOfStruct);		
+		}
+		else
+		{
+			FillHapiAttribInfo(AttributeInfo,InProperty,false);
 		}
 		AttributeInfo.storage = HapiStorageTraits::GetArrayStorage(AttributeInfo.storage);
 		return;
@@ -457,6 +486,8 @@ void FExportDataVisitor::operator()(T& Gather)
 	// auto& Gather = reinterpret_cast<FDataGather_PODExport&>(Gather);
 	const FString String = Gather.GetInputProperty()->GetAuthoredName();
 	Gather.Info.owner = Owner;
+	// Gather.Info.exists = true;
+	// Gather.Info.originalOwner = Owner;
 	
 	Gather.UnpackArray();
 
