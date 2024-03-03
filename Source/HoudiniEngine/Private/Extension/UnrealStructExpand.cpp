@@ -520,6 +520,12 @@ void FImportDataVisitor::operator()(T& Gather)
 		,String,Gather.Info,
 		&Gather.SizeFixedArray);
 	
+	// For Array of Struct, get one of the children SizeFixedArray as its SizedFixedArray.
+	// So we can know the size of struct array when we folding struct from their children
+	if(ArrayOfStructExport!=nullptr && ArrayOfStructExport->ChildSizeFixedArray==nullptr)
+	{
+		ArrayOfStructExport->ChildSizeFixedArray = &Gather.SizeFixedArray;
+	}
 	Gather.PackArray();
 }
 template void FExportDataVisitor::operator()(FDataExchange_POD& PODExport);

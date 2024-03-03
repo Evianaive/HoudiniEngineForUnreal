@@ -261,6 +261,8 @@ struct FDataExchange_Struct : public FDataExchange_Base
 	}
 	TArray<FDataGather_Variant> Children;
 	bool bArrayOfStruct {false};
+	/*Set when import data. Used when*/
+	TArray<int32>* ChildSizeFixedArray {nullptr};
 
 	// void GatherDataFromParent(const FDataGather_Struct& InParent)
 	// {
@@ -558,9 +560,15 @@ struct FImportDataVisitor
 	HAPI_NodeId NodeId {0};
 	HAPI_AttributeOwner Owner {HAPI_AttributeOwner::HAPI_ATTROWNER_INVALID};
 	HAPI_PartId PartId {0};
+
+	FDataExchange_Struct* ArrayOfStructExport {nullptr};
 	
 	void operator()(FDataExchange_Struct& StructExport)
 	{
+		if(StructExport.bArrayOfStruct)
+		{
+			TGuardValue GuardPtr(ArrayOfStructExport,&StructExport);
+		}		
 		StructExport.Accept(*this);
 	}
 	template<typename Export>
