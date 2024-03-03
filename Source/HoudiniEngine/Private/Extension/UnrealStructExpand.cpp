@@ -273,10 +273,10 @@ void FDataExchange_Base::PerformStructConversion(FInstancedStruct& Struct, const
 	// if(!DestStruct)
 	// 	return;
 
-	auto* ConversionMethod = ConvertSpecialization.GetConversionMethod<bUE2Hou>();
+	auto* ConversionMethod = ConvertSpecialization.GetConversionMethodRaw<bUE2Hou>();
 	if(!ConversionMethod)
 		return;
-	Struct = ConversionMethod(InPtr);
+	ConversionMethod(InPtr,Struct.GetMutableMemory());
 }
 
 template<bool bUE2Hou>
@@ -312,7 +312,7 @@ void FDataExchange_POD::PropToContainer(const uint8* Ptr)
 	uint8* NewElem = ContainerHelper.GetRawPtr(ContainerHelper.AddValue());
 	if(ConvertSpecialization.ToStruct)
 	{
-		const auto ConvertResult = ConvertSpecialization.ConvertTo(Ptr);
+		const auto ConvertResult = ConvertSpecialization.PerformConvert<true>(Ptr);
 		FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
 	}
 	else
@@ -337,7 +337,7 @@ void FDataExchange_POD::ArrayPropToContainer(const uint8* Ptr)
 		{
 			uint8* NewElem = ContainerHelper.GetRawPtr(AddStart+i);
 			Ptr = TempHelper.GetRawPtr(i);
-			const auto ConvertResult = ConvertSpecialization.ConvertTo(Ptr);
+			const auto ConvertResult = ConvertSpecialization.PerformConvert<true>(Ptr);
 			FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
 		}
 	}
@@ -346,6 +346,7 @@ void FDataExchange_POD::ArrayPropToContainer(const uint8* Ptr)
 		uint8* NewElem = ContainerHelper.GetRawPtr(AddStart);
 		FMemory::Memcpy(NewElem,TempHelper.GetRawPtr(0),Property->ElementSize);
 	}
+	SizeFixedArray.Add(Num);
 	Info.count+=1;
 	Info.totalArrayElements+=Num;
 }
@@ -367,7 +368,7 @@ namespace Private
 	{
 		if(StringExport.ConvertSpecialization.ToStruct)
 		{
-			const auto ConvertResult = StringExport.ConvertSpecialization.ConvertTo(Ptr);
+			const auto ConvertResult = StringExport.ConvertSpecialization.PerformConvert<true>(Ptr);
 			ConvertResult.ExportTextItem(Value,ConvertResult,nullptr,PPF_None,nullptr);
 		}
 		else

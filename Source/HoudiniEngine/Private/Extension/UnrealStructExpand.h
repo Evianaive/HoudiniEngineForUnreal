@@ -18,20 +18,28 @@ struct FStructConvertSpecialization
 	// {
 	// 	ConvertTo = ConvertBack = [](const uint8*){return FInstancedStruct();};
 	// };
-	using Func = FInstancedStruct(const uint8*);
+	using Func = void(const uint8*, uint8*);
+	UScriptStruct* FromStruct {nullptr};
 	UScriptStruct* ToStruct {nullptr};
-	Func* ConvertTo {nullptr};
-	Func* ConvertBack {nullptr};
+	Func* ConvertToRaw {nullptr};
+	Func* ConvertBackRaw {nullptr};
 	/*use to specify that some struct must export as string (for example curve ramp)*/
 	bool bExportString {false};
 
 	template<bool bUE2Hou>
-	Func* GetConversionMethod() const
+	Func* GetConversionMethodRaw() const
 	{
 		if constexpr (bUE2Hou)
-			return ConvertTo;
+			return ConvertToRaw;
 		else
-			return ConvertBack;
+			return ConvertBackRaw;
+	}
+	template<bool bUE2Hou>
+	FInstancedStruct PerformConvert(const uint8* InPtr) const
+	{
+		FInstancedStruct Struct{bUE2Hou?ToStruct:FromStruct};
+		GetConversionMethodRaw<bUE2Hou>()(InPtr,Struct.GetMutableMemory());
+		return Struct;
 	}
 	
 	static void RegisterConvertFunc(
@@ -42,9 +50,10 @@ struct FStructConvertSpecialization
 		bool InbExportString = false)
 	{
 		auto& Specialization = RegisteredSpecializations.FindOrAdd(InFromStruct);
+		Specialization.FromStruct = InFromStruct;
 		Specialization.ToStruct = InToStruct;
-		Specialization.ConvertTo = InConvertTo;
-		Specialization.ConvertBack = InConvertBack;
+		Specialization.ConvertToRaw = InConvertTo;
+		Specialization.ConvertBackRaw = InConvertBack;
 		Specialization.bExportString = InbExportString;
 	}
 	// template<typename TFromStruct,typename TToStruct>
@@ -363,7 +372,7 @@ struct FDataExchange_Struct : public FDataExchange_Base
 	{
 		if(ConvertSpecialization.ToStruct)
 		{
-			OutConversion = ConvertSpecialization.ConvertTo(InData);
+			OutConversion = ConvertSpecialization.PerformConvert<true>(InData);
 		}
 	}
 };
@@ -471,19 +480,21 @@ public:
 		if(StructExport.ArrayProperty)
 		{
 			FScriptArrayHelper Helper(StructExport.ArrayProperty,Ptr);
+			TGuardValue GuardAddCount(AddElementCount,static_cast<int32>(InArrayOfStructSignal));
 			for(int32 i = 0;i<Helper.Num();i++)
 			{
 				Ptr = Helper.GetRawPtr(i);
 				ConvertPtr(StructExport,ConvertResult);
-				StructExport.Accept(*this);				
+				StructExport.Accept(*this);
 			}
-			AddElementCount = InArrayOfStructSignal;
-			TGuardValue GuardAddCount(AddElementCount,Helper.Num());
+			//Todo 这里可以更改为只给其中一个成员吗，在export时也只使用其上面的
+			AddElementCount = Helper.Num();
 			StructExport.Accept(*this);
 		}
 		else
 		{
-			AddElementCount = Normal;
+			// AddElementCount = Normal;
+			// AddElementCount = FMath::Max(Normal,AddElementCount);
 			ConvertPtr(StructExport,ConvertResult);
 			StructExport.Accept(*this);
 		}
@@ -502,6 +513,7 @@ public:
 		}
 		else
 		{
+			// AddElementCount == Normal or InArrayOfStructSignal
 			if(
 			// HapiStorageTraits::IsArrayStorage(AsExport.Info.storage) 
 			AsExport.ArrayProperty 
