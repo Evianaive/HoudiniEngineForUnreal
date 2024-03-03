@@ -3,6 +3,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CustomScriptArrayHelper.h"
+#include "HapiStorageTypeTraits.h"
 #include "InstancedStruct.h"
 #include "HAPI/HAPI_Common.h"
 #include "Misc/TVariant.h"
@@ -20,7 +22,17 @@ struct FStructConvertSpecialization
 	UScriptStruct* ToStruct {nullptr};
 	Func* ConvertTo {nullptr};
 	Func* ConvertBack {nullptr};
+	/*use to specify that some struct must export as string (for example curve ramp)*/
 	bool bExportString {false};
+
+	template<bool bUE2Hou>
+	Func* GetConversionMethod() const
+	{
+		if constexpr (bUE2Hou)
+			return ConvertTo;
+		else
+			return ConvertBack;
+	}
 	
 	static void RegisterConvertFunc(
 		UScriptStruct* InFromStruct,
@@ -140,6 +152,18 @@ struct FDataGather_Base
 	{
 		return bInArrayOfStruct? GetInputProperty() : Property;
 	}
+	template<bool bUE2Hou>
+	const UScriptStruct* GetDestStruct() const
+	{
+		if constexpr (bUE2Hou)
+		{
+			return ConvertSpecialization.ToStruct;
+		}
+		else
+		{
+			return FromStruct;
+		}
+	};
 	// union
 	// {
 		const UScriptStruct* FromStruct {nullptr};
@@ -160,6 +184,11 @@ struct FDataGather_Base
 	static TMap<FName,FStorageInfo> PodStructsStorageInfo;
 	static TMap<FName,FStorageInfo> PropertyStorageInfo;
 
+	template<bool bUE2Hou>
+	void PerformStructConversion(FInstancedStruct& Struct, const uint8* InPtr);
+	template<bool bUE2Hou>
+	void PerformCoordinateConversion(const uint8* InPtr);
+
 	// static int32 HAPI_StorageTypeSizes[HAPI_STORAGETYPE_MAX];
 };
 
@@ -167,20 +196,26 @@ struct FDataGather_ExportInfo : public FDataGather_Base
 {
 	explicit FDataGather_ExportInfo(const FProperty* Property);
 	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
+	void Init(const FDataGather_Struct& InParent);
 	HAPI_AttributeInfo Info {};
+	TArray<int32> SizeFixedArray;
 	CoordConvertFuncType* CoordConvertUE2Hou {nullptr};
 	CoordConvertFuncType* CoordConvertHou2Ue {nullptr};	
 };
 
 struct FDataGather_PODExport : public FDataGather_ExportInfo
 {
-	FDataGather_PODExport(const FProperty* Property)
-		:FDataGather_ExportInfo(Property)
+	FDataGather_PODExport(const FProperty* InProperty)
+		:FDataGather_ExportInfo(InProperty) // Here we have already get the tuple size and hapi_storage
+		,Container(Property,ConvertSpecialization.ToStruct)
 	{
-		
+		// add function to process property we pass in here to convert to hapi_storage type and tuple size?
 	}
+	// FScriptArray Container;
+	FCustomScriptArrayHelper Container;
 	void Init(const FDataGather_Struct& InParent);
-	FScriptArray Container;
+	void PropToContainer(const uint8* Ptr);
+	void ArrayPropToContainer(const uint8* Ptr);
 };
 
 struct FDataGather_StringExport : public FDataGather_ExportInfo
@@ -189,11 +224,13 @@ struct FDataGather_StringExport : public FDataGather_ExportInfo
 		:FDataGather_ExportInfo(Property)
 	{
 		Info.storage = HAPI_STORAGETYPE_STRING;
-		Info.tupleSize = 0;
+		Info.tupleSize = 1;
 	}
 	TArray<FString> Container;
-	void Init(const FDataGather_Struct& InParent){};
+	// void Init(const FDataGather_Struct& InParent);
 	/*Todo Struct Export by Actual Struct*/
+	void PropToContainer(const uint8* Ptr);
+	void ArrayPropToContainer(const uint8* Ptr);
 };
 
 struct FDataGather_Struct : public FDataGather_Base
@@ -247,20 +284,22 @@ struct FDataGather_Struct : public FDataGather_Base
 		}
 		else if(const FStructProperty* StructProperty = CastField<const FStructProperty>(InProp))
 		{
-			const UScriptStruct* ConvertTo = StructProperty->Struct;
+			const UScriptStruct* FinalStruct = StructProperty->Struct;
 			bool bExportString = false;
+			/*We Specified Convert the struct property to another struct*/
 			if(const auto* Re = FStructConvertSpecialization::RegisteredSpecializations.Find(StructProperty->Struct))
 			{
-				ConvertTo = Re->ToStruct;
+				FinalStruct = Re->ToStruct;
 				bExportString = Re->bExportString;
 			}
-			if(PodStructsStorageInfo.Find(ConvertTo->GetFName()))
-			{
-				Add<FDataGather_PODExport>(FirstEnterProp);
-			}
-			else if(bExportString)
+			if(bExportString)
 			{
 				Add<FDataGather_StringExport>(FirstEnterProp);
+			}
+			else if(PodStructsStorageInfo.Find(FinalStruct->GetFName()))
+			{
+				Add<FDataGather_PODExport>(FirstEnterProp);
+				//Todo this property doesn't match the struct if struct conversion is Specialization!
 			}
 			else
 			{
@@ -301,6 +340,14 @@ struct FDataGather_Struct : public FDataGather_Base
 		for(auto& Child : Children)
 		{
 			::Visit(Visitor,Child);
+		}
+	}
+
+	void GetConvertSpecializationTo(const uint8* InData, FInstancedStruct& OutConversion)
+	{
+		if(ConvertSpecialization.ToStruct)
+		{
+			OutConversion = ConvertSpecialization.ConvertTo(InData);
 		}
 	}
 };
@@ -376,17 +423,91 @@ public:
 
 struct TGatherDataVisitor
 {
+	TGatherDataVisitor(const uint8* StructPtr);
+	uint8* Ptr {nullptr};
+	UScriptStruct* Struct {nullptr};
+	bool bInArrayOfStruct {false};
+	int32 AddElementCount {-1};
 public:
-	void operator()(FDataGather_Struct& Struct)
+	void ConvertPtr(FDataGather_Struct& StructExport, FInstancedStruct& OutInstanceStruct)
 	{
-		
+		if(StructExport.ConvertSpecialization.ToStruct)
+		{
+			StructExport.GetConvertSpecializationTo(Ptr,OutInstanceStruct);
+			Ptr = OutInstanceStruct.GetMutableMemory();
+		}
 	}
-	void operator()(FDataGather_PODExport& PODData)
+	void operator()(FDataGather_Struct& StructExport)
 	{
-		
+		// ScopeExitSupport::TScopeGuard<>();
+		// ON_SCOPE_EXIT{return;}
+		TGuardValue GuardPtr(Ptr,Ptr+StructExport.OffsetInParentStruct);
+		TGuardValue GuardArray(bInArrayOfStruct,(bInArrayOfStruct||StructExport.bArrayOfStruct));
+		FInstancedStruct ConvertResult;
+		if(StructExport.ArrayProperty)
+		{
+			FScriptArrayHelper Helper(StructExport.ArrayProperty,Ptr);
+			for(int32 i = 0;i<Helper.Num();i++)
+			{
+				Ptr = Helper.GetRawPtr(i);
+				ConvertPtr(StructExport,ConvertResult);
+				StructExport.Accept(*this);				
+			}
+			AddElementCount = -1;
+			TGuardValue GuardAddCount(AddElementCount,Helper.Num());
+			StructExport.Accept(*this);
+		}
+		else
+		{
+			ConvertPtr(StructExport,ConvertResult);
+			StructExport.Accept(*this);
+		}
 	}
-	void operator()(FDataGather_StringExport& String)
+	template<typename Export>
+	void operator()(Export& PODExport)
 	{
-		
+		FDataGather_ExportInfo& AsExport = PODExport;
+		TGuardValue GuardPtr(Ptr,Ptr+AsExport.OffsetInParentStruct);
+		if(AddElementCount!=-1)
+		{
+			AsExport.SizeFixedArray.Add(AddElementCount);
+			AsExport.Info.totalArrayElements += AddElementCount;
+			AsExport.Info.count += 1;
+		}
+		else
+		{
+			if(
+			// HapiStorageTraits::IsArrayStorage(AsExport.Info.storage) 
+			AsExport.ArrayProperty 
+			&& !bInArrayOfStruct)
+			{
+				PODExport.ArrayPropToContainer(Ptr);
+			}
+			else
+			{
+				PODExport.PropToContainer(Ptr);
+			}
+		}
 	}
+	// void operator()(FDataGather_StringExport& StringExport)
+	// {
+	// 	const uint8* PropertyPtr = Ptr+StringExport.OffsetInParentStruct;
+	// 	if(bInArrayOfStruct)
+	// 	{
+	// 		StringExport.GetInputProperty()
+	// 		->ExportTextItem_Direct(StringExport.Container.Add_GetRef({}),PropertyPtr,PropertyPtr,nullptr,0);
+	// 	}
+	// 	else
+	// 	{
+	// 		if(StringExport.ArrayProperty)
+	// 		{
+	// 			FScriptArrayHelper Helper(StringExport.ArrayProperty,PropertyPtr);
+	// 			for(int32 i = 0;i<Helper.Num();i++)
+	// 			{
+	// 				Helper.GetRawPtr(i);
+	// 				StringExport.Container.Add_GetRef({});
+	// 			}
+	// 		}		
+	// 	}
+	// }
 };

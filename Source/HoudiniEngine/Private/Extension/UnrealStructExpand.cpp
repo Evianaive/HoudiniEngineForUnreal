@@ -241,6 +241,25 @@ TMap<FName,FDataGather_ExportInfo::FStorageInfo> FDataGather_Base::PropertyStora
 
 #pragma endregion Template
 
+template<bool bUE2Hou>
+void FDataGather_Base::PerformStructConversion(FInstancedStruct& Struct, const uint8* InPtr)
+{
+	// auto* DestStruct = GetDestStruct<true>();
+	// if(!DestStruct)
+	// 	return;
+
+	auto* ConversionMethod = ConvertSpecialization.GetConversionMethod<bUE2Hou>();
+	if(!ConversionMethod)
+		return;
+	Struct = ConversionMethod(InPtr);
+}
+
+template<bool bUE2Hou>
+void FDataGather_Base::PerformCoordinateConversion(const uint8* InPtr)
+{
+	
+}
+
 FDataGather_ExportInfo::FDataGather_ExportInfo(const FProperty* Property)
 :FDataGather_Base(Property)
 {
@@ -261,12 +280,113 @@ FDataGather_ExportInfo::FDataGather_ExportInfo(const FProperty* Property)
 	// Export String will Override POD Default Export Method because it create a StringExport
 }
 
-void FDataGather_PODExport::Init(const FDataGather_Struct& InParent)
+void FDataGather_ExportInfo::Init(const FDataGather_Struct& InParent)
 {
 	bInArrayOfStruct = InParent.bArrayOfStruct || InParent.bInArrayOfStruct;
+}
+
+void FDataGather_PODExport::Init(const FDataGather_Struct& InParent)
+{
+	FDataGather_ExportInfo::Init(InParent);
 	const FProperty* InputProperty = GetContainerElementRepresentProperty();
 	FillHapiAttribInfo(Info,InputProperty,bInArrayOfStruct);
 }
+
+// void FDataGather_StringExport::Init(const FDataGather_Struct& InParent)
+// {
+// 	FDataGather_ExportInfo::Init(InParent);
+// }
+
+void FDataGather_PODExport::PropToContainer(const uint8* Ptr)
+{
+	// Info.tupleSize;
+	uint8* NewElem = Container.GetRawPtr(Container.AddValue());
+	if(ConvertSpecialization.ToStruct)
+	{
+		const auto ConvertResult = ConvertSpecialization.ConvertTo(Ptr);
+		FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
+	}
+	else
+	{
+		FMemory::Memcpy(NewElem,Ptr,Property->ElementSize);
+	}	
+}
+
+void FDataGather_PODExport::ArrayPropToContainer(const uint8* Ptr)
+{
+	if(!ArrayProperty)
+		return;
+	FScriptArrayHelper TempHelper(ArrayProperty,Ptr);
+	const int32 Num = TempHelper.Num();
+	const int32 AddStart = Container.AddValues(Num);
+	
+	if(ConvertSpecialization.ToStruct)
+	{
+		for(int32 i = 0; i<Num; i++)
+		{
+			uint8* NewElem = Container.GetRawPtr(AddStart+i);
+			Ptr = TempHelper.GetRawPtr(i);
+			const auto ConvertResult = ConvertSpecialization.ConvertTo(Ptr);
+			FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
+		}
+	}
+	else
+	{
+		uint8* NewElem = Container.GetRawPtr(AddStart);
+		FMemory::Memcpy(NewElem,TempHelper.GetRawPtr(0),Property->ElementSize);
+	}
+}
+
+#pragma region StringExport
+
+namespace Private
+{
+	void ExportString(FDataGather_StringExport& StringExport, const uint8* Ptr, FString& Value)
+	{
+		if(StringExport.ConvertSpecialization.ToStruct)
+		{
+			const auto ConvertResult = StringExport.ConvertSpecialization.ConvertTo(Ptr);
+			ConvertResult.ExportTextItem(Value,ConvertResult,nullptr,PPF_None,nullptr);
+		}
+		else
+		{
+			StringExport.Property->ExportTextItem_Direct(Value,Ptr,Ptr,nullptr,PPF_None,nullptr); 
+		}
+	}
+}
+
+void FDataGather_StringExport::PropToContainer(const uint8* Ptr)
+{
+	if(Property->IsA(FStrProperty::StaticClass()))
+	{
+		Container.Add(*(reinterpret_cast<const FString*>(Ptr)));
+	}
+	else
+	{
+		Private::ExportString(*this,Ptr,Container.AddDefaulted_GetRef());
+	}
+}
+
+void FDataGather_StringExport::ArrayPropToContainer(const uint8* Ptr)
+{
+	if(Property->IsA(FStrProperty::StaticClass()))
+	{
+		Container.Append(*(reinterpret_cast<const TArray<FString>*>(Ptr)));	
+	}
+	else
+	{
+		FScriptArrayHelper TempHelper(ArrayProperty,Ptr);
+		const int32 Num = TempHelper.Num();
+
+		const int32 AddStart = Container.AddZeroed(Num);
+		for(int32 i=0; i<Num; i++)
+		{
+			Private::ExportString(*this,TempHelper.GetRawPtr(i),Container[AddStart+i]);
+		}		
+	}
+}
+
+#pragma endregion StringExport
 
 void FDataGather_ExportInfo::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
 {
