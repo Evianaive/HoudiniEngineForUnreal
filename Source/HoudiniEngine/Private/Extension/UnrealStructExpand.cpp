@@ -351,6 +351,32 @@ void FDataExchange_POD::ArrayPropToContainer(const uint8* Ptr)
 	Info.totalArrayElements+=Num;
 }
 
+template <bool bMinInfoCount>
+void FDataExchange_POD::ContainerToProp(uint8* Ptr)
+{
+	const int32 LastElemNum = ContainerHelper.Num()-1;
+	const uint8* NewElem = ContainerHelper.GetRawPtr(LastElemNum);
+	if(ConvertSpecialization.ToStruct)
+	{
+		const auto ConvertResult = ConvertSpecialization.PerformConvert<false>(NewElem);
+		FMemory::Memcpy(Ptr,ConvertResult.GetMemory(),Property->ElementSize);
+	}
+	else
+	{
+		FMemory::Memcpy(Ptr,NewElem,Property->ElementSize);
+	}
+	ContainerHelper.RemoveValues(LastElemNum);
+	if constexpr (bMinInfoCount)
+		Info.count--;
+}
+
+void FDataExchange_POD::ContainerToArrayProp(uint8* Ptr)
+{
+
+	/*Todo*/	
+	// ContainerHelper.RemoveValues(LastElemNum);
+}
+
 void FDataExchange_POD::UnpackArray()
 {
 	ContainerHelper.UnPackElement(Info.tupleSize);
@@ -376,20 +402,20 @@ namespace Private
 			StringExport.Property->ExportTextItem_Direct(Value,Ptr,Ptr,nullptr,PPF_None,nullptr); 
 		}
 	}
-}
-template<bool bAddInfoCount>
-void FDataExchange_String::PropToContainer(const uint8* Ptr)
-{
-	if(Property->IsA(FStrProperty::StaticClass()))
+	void ImportString(FDataExchange_String& StringExport, uint8* Ptr, const FString& Value)
 	{
-		Container.Add(*(reinterpret_cast<const FString*>(Ptr)));
+		auto ValueChar = *Value;
+		if(StringExport.ConvertSpecialization.ToStruct)
+		{
+			FInstancedStruct ConvertResult{StringExport.ConvertSpecialization.ToStruct};
+			ConvertResult.ImportTextItem(ValueChar,PPF_None,nullptr,nullptr);
+			StringExport.ConvertSpecialization.GetConversionMethodRaw<false>()(ConvertResult.GetMemory(),Ptr);
+		}
+		else
+		{
+			StringExport.Property->ImportText_Direct(ValueChar,Ptr,nullptr,PPF_None,nullptr); 
+		}
 	}
-	else
-	{
-		Private::ExportString(*this,Ptr,Container.AddDefaulted_GetRef());
-	}
-	if constexpr (bAddInfoCount)
-		Info.count++;
 }
 
 void FDataExchange_String::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, const FProperty* InProperty, bool InbInArrayOfStruct)
@@ -406,6 +432,21 @@ void FDataExchange_String::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,
 		AttributeInfo.storage = HAPI_STORAGETYPE_STRING;	
 	}
 	AttributeInfo.tupleSize = 1;
+}
+
+template<bool bAddInfoCount>
+void FDataExchange_String::PropToContainer(const uint8* Ptr)
+{
+	if(Property->IsA(FStrProperty::StaticClass()))
+	{
+		Container.Add(*(reinterpret_cast<const FString*>(Ptr)));
+	}
+	else
+	{
+		Private::ExportString(*this,Ptr,Container.AddDefaulted_GetRef());
+	}
+	if constexpr (bAddInfoCount)
+		Info.count++;
 }
 
 void FDataExchange_String::ArrayPropToContainer(const uint8* Ptr)
@@ -427,8 +468,69 @@ void FDataExchange_String::ArrayPropToContainer(const uint8* Ptr)
 			Private::ExportString(*this,TempHelper.GetRawPtr(i),Container[AddStart+i]);
 		}		
 	}
+	SizeFixedArray.Add(Num);
 	Info.count+=1;
 	Info.totalArrayElements+=Num;
+}
+
+template <bool bMinInfoCount>
+void FDataExchange_String::ContainerToProp(uint8* Ptr)
+{
+	if(Property->IsA(FStrProperty::StaticClass()))
+	{
+		*(reinterpret_cast<FString*>(Ptr)) = Container.Pop();
+	}
+	else
+	{
+		Private::ImportString(*this,Ptr,Container.Pop());
+	}
+	if constexpr (bMinInfoCount)
+		Info.count--;
+}
+
+void FDataExchange_String::ContainerToArrayProp(uint8* Ptr)
+{
+	int32 Num = SizeFixedArray.Pop();;
+	if(Property->IsA(FStrProperty::StaticClass()))
+	{
+		TArray<FString>& DestArray = *(reinterpret_cast<TArray<FString>*>(Ptr));
+		const int32 StartNum = DestArray.Num();
+		for(int i = StartNum+Num-1;i>=StartNum;i--)
+		{
+			DestArray.Add(Container.Pop());
+		}
+	}
+	else
+	{
+		FScriptArrayHelper TempHelper(ArrayProperty,Ptr);
+		Num = Container.Num();
+
+		const int32 AddStart = TempHelper.AddValues(Num);
+		for(int32 i = AddStart+Num-1; i>=AddStart; i--)
+		{
+			Private::ImportString(*this,TempHelper.GetRawPtr(AddStart+i),Container.Pop());
+		}
+	}	
+	Info.count-=1;
+	Info.totalArrayElements-=Num;
+}
+
+FFoldDataVisitor::FFoldDataVisitor(uint8* StructPtr)
+{
+	Reset(StructPtr);
+}
+
+void FFoldDataVisitor::Reset()
+{
+	Struct = nullptr;
+	bInArrayOfStruct = false;
+	AddElementCount = Normal;
+}
+
+void FFoldDataVisitor::Reset(uint8* StructPtr)
+{
+	Ptr = StructPtr;
+	Reset();
 }
 
 FUnfoldDataVisitor::FUnfoldDataVisitor(const uint8* StructPtr)

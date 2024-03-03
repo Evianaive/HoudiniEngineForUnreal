@@ -211,6 +211,7 @@ struct FDataExchange_Info : public FDataExchange_Base
 	explicit FDataExchange_Info(const FProperty* Property);
 	HAPI_AttributeInfo Info {};
 	TArray<int32> SizeFixedArray;
+	// Todo Perform CoordConvert
 	CoordConvertFuncType* CoordConvertUE2Hou {nullptr};
 	CoordConvertFuncType* CoordConvertHou2Ue {nullptr};
 };
@@ -226,9 +227,15 @@ struct FDataExchange_POD : public FDataExchange_Info
 	// FScriptArray Container;
 	FCustomScriptArrayHelper ContainerHelper;
 	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
+	
+	// Todo Perform CoordConvert
 	template<bool bAddInfoCount = true>
 	void PropToContainer(const uint8* Ptr);
 	void ArrayPropToContainer(const uint8* Ptr);
+	template<bool bMinInfoCount = true>
+	void ContainerToProp(uint8* Ptr);
+	void ContainerToArrayProp(uint8* Ptr);
+	
 	void* GetContainer(){return &const_cast<FScriptArray&>(ContainerHelper.GetArray());};
 	void* GetContainerRawPtr(){return ContainerHelper.GetRawPtr();};
 	
@@ -245,9 +252,15 @@ struct FDataExchange_String : public FDataExchange_Info
 	// void Init(const FDataGather_Struct& InParent);
 	/*Todo Struct Export by Actual Struct*/
 	static void FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo,const FProperty* InProperty,bool InbInArrayOfStruct);
+	
+	// Todo Perform CoordConvert if needed
 	template<bool bAddInfoCount = true>
 	void PropToContainer(const uint8* Ptr);
 	void ArrayPropToContainer(const uint8* Ptr);
+	template<bool bMinInfoCount = true>
+	void ContainerToProp(uint8* Ptr);
+	void ContainerToArrayProp(uint8* Ptr);
+	
 	void* GetContainer(){return &Container;}
 	void* GetContainerRawPtr(){return Container.GetData();};
 	
@@ -443,6 +456,95 @@ public:
 			}
         }
 		Index += 1;
+	}
+};
+
+struct FFoldDataVisitor
+{
+	FFoldDataVisitor(uint8* StructPtr);
+	uint8* Ptr;
+	UScriptStruct* Struct;
+	bool bInArrayOfStruct;
+	int32 AddElementCount;
+	
+	enum
+	{
+		InArrayOfStructSignal = -1,
+		Normal = -2
+	};
+	void Reset();
+	void Reset(uint8* StructPtr);
+	void ConvertPtr(FDataExchange_Struct& StructExport, FInstancedStruct& OutInstanceStruct)
+	{
+		uint8* CachePtr = Ptr;
+		if(StructExport.ConvertSpecialization.ToStruct)
+			Ptr = OutInstanceStruct.GetMutableMemory();
+		StructExport.Accept(*this);
+		if(StructExport.ConvertSpecialization.ToStruct)
+			StructExport.ConvertSpecialization.ConvertBackRaw(Ptr,CachePtr);
+	}
+	void operator()(FDataExchange_Struct& StructExport)
+	{
+		/*必须从后往前转换成，对于Array属性，其序号无法维护，因为有SizeFixedArray，需要对每个Array都维护一个序号，这是不可能的*/
+		TGuardValue GuardPtr(Ptr,Ptr+StructExport.OffsetInParentStruct);
+		TGuardValue GuardArray(bInArrayOfStruct,(bInArrayOfStruct||StructExport.bArrayOfStruct));
+		
+		FInstancedStruct ConvertResult{StructExport.ConvertSpecialization.FromStruct};
+		if(StructExport.ArrayProperty)
+		{
+			FScriptArrayHelper Helper(StructExport.ArrayProperty,Ptr);
+			if(StructExport.ChildSizeFixedArray == nullptr)
+			{
+				UE_LOG(LogTemp,Log,TEXT("Invalid SizeFixedArray"));
+				return;
+			}
+			const int32 Num = StructExport.ChildSizeFixedArray->Last();
+			const int32 Start = Helper.AddValues(Num);
+			
+			TGuardValue GuardAddCount(AddElementCount,static_cast<int32>(InArrayOfStructSignal));
+			for(int32 i = Start;i<Start+Helper.Num();i++)
+			{
+				Ptr = Helper.GetRawPtr(i);
+				ConvertPtr(StructExport,ConvertResult);
+			}
+			
+			AddElementCount=Helper.Num();
+			StructExport.Accept(*this);
+		}
+		else
+		{
+			// AddElementCount = Normal;
+			// AddElementCount = FMath::Max(Normal,AddElementCount);
+			ConvertPtr(StructExport,ConvertResult);
+		}
+	}
+	template<typename Export>
+	void operator()(Export& PODExport)
+	{
+		FDataExchange_Info& AsExport = PODExport;
+		TGuardValue GuardPtr(Ptr,Ptr+AsExport.OffsetInParentStruct);
+		
+		if(AddElementCount>InArrayOfStructSignal)
+		{
+			AsExport.SizeFixedArray.RemoveAt(AsExport.SizeFixedArray.Num()-1);
+			
+			AsExport.Info.totalArrayElements -= AddElementCount;
+			AsExport.Info.count -= 1;
+		}
+		else
+		{
+			if(
+			// HapiStorageTraits::IsArrayStorage(AsExport.Info.storage) 
+			AsExport.ArrayProperty
+			&& !bInArrayOfStruct)
+			{
+				PODExport.ContainerToArrayProp(Ptr);
+			}
+			else
+			{
+				AddElementCount==Normal?PODExport.ContainerToProp(Ptr):PODExport.ContainerToProp<false>(Ptr);
+			}
+		}
 	}
 };
 
