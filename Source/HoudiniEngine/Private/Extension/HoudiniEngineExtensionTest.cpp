@@ -30,23 +30,37 @@ void AHoudiniEngineExtensionTestActor::Tick(float DeltaTime)
 
 void AHoudiniEngineExtensionTestActor::Test()
 {
+#if 1
 	TArray<FHoudiniEngineExtensionTest> TestDatum{
 		{
-			8,88,99,24332,33,32,42,1,0.5,0.6,{0.4,0.3,0.2},{0.2,0.3},TEXT("MyString")
+			8,99,24332,44,33,77,42,1,0.5,0.6,
+			{0.4,0.3,0.2},{0.2,0.3},
+			TEXT("MyString")
 		},
 		{
-			8,8,99,332,33,32,42,1,0.5,0.6,{0.4,0.3,0.2},{0.2,0.3},TEXT("MyString")
+			8,99,332,45,33,32,77,1,0.5,0.6,
+			{0.4,0.3,0.2},{0.2,0.3},
+			TEXT("MyString")
 		},
 		{
-			8,78,99,2332,33,32,42,1,0.5,0.6,{0.4,0.3,0.2},{0.2,0.3},TEXT("MyStrfdag")
+			8,99,2332,46,33,32,78,1,0.5,0.6,
+			{0.5,0.3,0.2},{0.2,0.3},
+			TEXT("MyStrfdag")
 		},
 		{
-			8,99,99,2432,33,32,42,1,0.5,0.6,{0.4,0.3,0.2},{0.2,0.3},TEXT("MyStrfdaig")
+			8,99,2432,43,33,32,89,1,0.5,0.6,
+			{0.4,0.3,0.2},{0.2,0.3},
+			TEXT("MyStrfdaig")
 		},
 		{
-			8,21,43,2433,33,32,42,1,0.5,0.6,{0.4,0.3,0.2},{0.2,0.3},TEXT("MyStrfdig")
+			8,43,2433,48,33,32,77,1,0.5,0.6,
+			{0.4,0.40,0.2},{0.2,0.3},
+			TEXT("MyStrfdig")
 		}};
-
+#else
+	TArray<FHoudiniEngineExtensionEasyTest> TestDatum{{1},{2},{3},{4},{5}};
+#endif
+	
 	HAPI_NodeId NodeId;
 	FHoudiniEngineUtils::CreateInputNode(TEXT("test"),NodeId);
 
@@ -65,6 +79,11 @@ void AHoudiniEngineExtensionTestActor::Test()
 	
 	HAPI_Result ResultPartInfo = FHoudiniApi::SetPartInfo(
 	FHoudiniEngine::Get().GetSession(), NodeId, 0, &Part);
+
+	Part.id = 1;
+	Part.type = HAPI_PARTTYPE_BOX;
+	HAPI_Result ResultPartInfo2 = FHoudiniApi::SetPartInfo(
+	FHoudiniEngine::Get().GetSession(), NodeId, 1, &Part);
 
 	{
 		// Create point attribute info for P.
@@ -92,9 +111,13 @@ void AHoudiniEngineExtensionTestActor::Test()
 		// Now that we have raw positions, we can upload them for our attribute.
 		FHoudiniEngineUtils::HapiSetAttributeFloatData(
 			Position, NodeId, 0, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint);
+		
+		FHoudiniEngineUtils::HapiSetAttributeFloatData(
+			Position, NodeId, 1, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint);
 	}
 	
 	FDataExchange_Struct Gather{decltype(TestDatum)::ElementType::StaticStruct()};
+	
 	FUnfoldDataVisitor GatherDataVisitor{nullptr};
 	for (auto& Data: TestDatum)
 	{
@@ -106,6 +129,59 @@ void AHoudiniEngineExtensionTestActor::Test()
 	Gather.Accept(ExportDataVisitor);
 
 	// Commit the geo.
-	FHoudiniApi::CommitGeo(FHoudiniEngine::Get().GetSession(), NodeId);
+	FHoudiniApi::CommitGeo(SessionId, NodeId);
+
+	FHoudiniEngineUtils::HapiCookNode(NodeId);
+
+	FExportDataVisitor ImportDataVisitor{SessionId,NodeId,HAPI_AttributeOwner::HAPI_ATTROWNER_POINT};
+	Gather.Accept(ImportDataVisitor);
+	
+	FFoldDataVisitor FoldDataVisitor{nullptr};
+
+	TArray<FHoudiniEngineExtensionTest> ImportDatum;
+	ImportDatum.AddDefaulted(TestDatum.Num());
+	for (int i=ImportDatum.Num()-1; i>=0; i--)
+	{
+		FoldDataVisitor.Reset(reinterpret_cast<uint8*>(&ImportDatum[i]));
+		Gather.Accept(FoldDataVisitor);
+	}
+}
+
+void UHoudiniEngineTestLibrary::CheckHoudiniAssetComponent(UHoudiniAssetComponent* Component)
+{
+	auto Session = FHoudiniEngine::Get().GetSession();
+	auto AssetId = Component->GetAssetId();
+	// FHoudiniEngineUtils::HapiGetNodePath()
+	TArray<int32> NodeIds = {-1};
+	for (int i = 0; i < NodeIds.Num(); ++i)
+	{
+		FHoudiniApi::GetOutputNodeId(Session,AssetId,i,NodeIds.GetData());
+	}
+	UE_LOG(LogTemp,Log,TEXT("Node Id: %i"), NodeIds[0]);
+	
+	TArray<HAPI_GeoInfo> GeoInfos;
+	int32 Count = 0;
+	FHoudiniApi::GetOutputGeoCount(Session, AssetId, &Count);
+	GeoInfos.SetNum(Count);
+	for (int32 i = 0; i< Count; i++)
+	{
+		auto& GeoInfo = GeoInfos[i];  
+		FHoudiniApi::GeoInfo_Init(&GeoInfo);
+	}
+	FHoudiniApi::GetOutputGeoInfos(Session, AssetId, &GeoInfos[0], Count);
+	for (int32 i = 0; i< Count; i++)
+	{
+		auto& GeoInfo = GeoInfos[i];  
+		FString NameString;
+		FHoudiniEngineString::ToFString(GeoInfo.nameSH, NameString);
+		UE_LOG(LogTemp,Log,TEXT("part count %i, Name %s"), GeoInfo.partCount,*NameString);
+	}
+	
+	
+	
+	// FHoudiniApi::GetNodePath(Session,AssetId,)
+	
+	// FHoudiniApi::GetOutputNodeId()
+	// FHoudiniApi::GetNodeFromPath()
 }
 
