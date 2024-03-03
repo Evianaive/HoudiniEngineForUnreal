@@ -221,12 +221,14 @@ TMap<FName,FDataExchange_Info::FStorageInfo> FDataExchange_Base::PropertyStorage
 	
 	{NAME_DoubleProperty,{1,HAPI_STORAGETYPE_FLOAT64}},
 	{NAME_FloatProperty,{1,HAPI_STORAGETYPE_FLOAT}},
-	//Todo Int16 is not supported!!
+	
 	{NAME_Int8Property,{1,HAPI_STORAGETYPE_INT8}},
+	{NAME_Int16Property,{1,HAPI_STORAGETYPE_INT16}},
 	{NAME_IntProperty,{1,HAPI_STORAGETYPE_INT}},
 	{NAME_Int64Property,{1,HAPI_STORAGETYPE_INT64}},
-	//Todo UInt16 is not supported!!
+	
 	{NAME_ByteProperty,{1,HAPI_STORAGETYPE_UINT8}},
+	{NAME_UInt16Property,{1,HAPI_STORAGETYPE_INT16}},
 	{NAME_UInt32Property,{1,HAPI_STORAGETYPE_INT}},
 	{NAME_UInt64Property,{1,HAPI_STORAGETYPE_INT64}}
 	
