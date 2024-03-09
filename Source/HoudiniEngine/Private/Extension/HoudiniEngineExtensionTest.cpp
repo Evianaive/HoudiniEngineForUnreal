@@ -13,25 +13,7 @@ AHoudiniEngineExtensionTestActor::AHoudiniEngineExtensionTestActor()
 {
 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
-}
-
-// Called when the game starts or when spawned
-void AHoudiniEngineExtensionTestActor::BeginPlay()
-{
-	Super::BeginPlay();
-	
-}
-
-// Called every frame
-void AHoudiniEngineExtensionTestActor::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
-
-void AHoudiniEngineExtensionTestActor::Test()
-{
-#if 1
-	TArray<FHoudiniEngineExtensionTest> TestDatum{
+	TestDatum = {
 		{
 			8,99,24332,44,33,77,42,1,0.5,0.6,
 			{0.4,0.3,0.2},{0.2,0.3},
@@ -56,11 +38,24 @@ void AHoudiniEngineExtensionTestActor::Test()
 			8,43,2433,48,33,32,77,1,0.5,0.6,
 			{0.4,0.40,0.2},{0.2,0.3},
 			TEXT("MyStrfdig")
-		}};
-#else
-	TArray<FHoudiniEngineExtensionEasyTest> TestDatum{{1},{2},{3},{4},{5}};
-#endif
+		}};	
+}
+
+// Called when the game starts or when spawned
+void AHoudiniEngineExtensionTestActor::BeginPlay()
+{
+	Super::BeginPlay();
 	
+}
+
+// Called every frame
+void AHoudiniEngineExtensionTestActor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+}
+
+void AHoudiniEngineExtensionTestActor::Test()
+{
 	HAPI_NodeId NodeId;
 	FHoudiniEngineUtils::CreateInputNode(TEXT("test"),NodeId);
 
@@ -115,26 +110,34 @@ void AHoudiniEngineExtensionTestActor::Test()
 		FHoudiniEngineUtils::HapiSetAttributeFloatData(
 			Position, NodeId, 1, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint);
 	}
-	
-	FDataExchange_Struct Gather{decltype(TestDatum)::ElementType::StaticStruct()};
-	
-	FUnfoldDataVisitor GatherDataVisitor{nullptr};
-	for (auto& Data: TestDatum)
-	{
-		GatherDataVisitor.Reset(reinterpret_cast<const uint8*>(&Data));
-		Gather.Accept(GatherDataVisitor);
-	}
 	const auto SessionId = FHoudiniEngine::Get().GetSession();
-	FExportDataVisitor ExportDataVisitor{SessionId,NodeId,HAPI_AttributeOwner::HAPI_ATTROWNER_POINT};
-	Gather.Accept(ExportDataVisitor);
+	{	
+		FDataExchange_Struct Gather{decltype(TestDatum)::ElementType::StaticStruct()};
+		
+		FUnfoldDataVisitor GatherDataVisitor{nullptr};
+		for (auto& Data: TestDatum)
+		{
+			GatherDataVisitor.Reset(reinterpret_cast<const uint8*>(&Data));
+			Gather.Accept(GatherDataVisitor);
+		}
+		FExportDataVisitor ExportDataVisitor{SessionId,NodeId,HAPI_AttributeOwner::HAPI_ATTROWNER_POINT};
+		Gather.Accept(ExportDataVisitor);
 
-	// Commit the geo.
-	FHoudiniApi::CommitGeo(SessionId, NodeId);
+		// Commit the geo.
+		FHoudiniApi::CommitGeo(SessionId, NodeId);
 
-	FHoudiniEngineUtils::HapiCookNode(NodeId);
+		
+		FHoudiniEngineUtils::HapiCookNode(NodeId,nullptr,true);
+		
+		HAPI_AttributeInfo TempInfo;
+		FHoudiniApi::AttributeInfo_Init(&TempInfo);
+		FHoudiniApi::GetAttributeInfo(SessionId,NodeId,0,"P",HAPI_ATTROWNER_POINT,&TempInfo);
+		
+	}
 
-	FExportDataVisitor ImportDataVisitor{SessionId,NodeId,HAPI_AttributeOwner::HAPI_ATTROWNER_POINT};
-	Gather.Accept(ImportDataVisitor);
+	FImportDataVisitor ImportDataVisitor{SessionId,NodeId,HAPI_AttributeOwner::HAPI_ATTROWNER_POINT};
+	FDataExchange_Struct Gather2{decltype(TestDatum)::ElementType::StaticStruct()};
+	Gather2.Accept(ImportDataVisitor);
 	
 	FFoldDataVisitor FoldDataVisitor{nullptr};
 
@@ -143,7 +146,7 @@ void AHoudiniEngineExtensionTestActor::Test()
 	for (int i=ImportDatum.Num()-1; i>=0; i--)
 	{
 		FoldDataVisitor.Reset(reinterpret_cast<uint8*>(&ImportDatum[i]));
-		Gather.Accept(FoldDataVisitor);
+		Gather2.Accept(FoldDataVisitor);
 	}
 }
 

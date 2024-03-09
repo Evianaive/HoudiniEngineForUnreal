@@ -384,7 +384,7 @@ void FDataExchange_POD::UnpackArray()
 
 void FDataExchange_POD::PackArray()
 {
-	ContainerHelper.PackElement(ContainerHelper.GetStorePackSize());
+	ContainerHelper.PackElement(Info.tupleSize);
 }
 #pragma region StringExport
 
@@ -618,6 +618,8 @@ void FImportDataVisitor::operator()(T& Gather)
 	FHoudiniApi::GetAttributeInfo(SessionId,NodeId,PartId,TCHAR_TO_ANSI(*String),Owner,&TempInfo);
 
 	//Todo Compare TempInfo with Gather.Info
+	Gather.Info = TempInfo;
+	UE_LOG(LogHoudiniEngine,Log,TEXT("Attrib [%s] Count:%i"),*String,Gather.Info);
 	
 	FHoudiniEngineUtilsExtenstion::HapiGetAttribData(
 		Gather.GetContainer(),
