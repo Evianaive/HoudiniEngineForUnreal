@@ -42,6 +42,10 @@ struct FHoudiniNode
 	FHoudiniNode(int32 InNodeId);
 
 	bool CookNodeNode(bool bWaitForCompletion = true);
+	bool IsValid() const
+	{
+		return NodeId != -1;
+	}
 	
 	const HAPI_Session* Session {nullptr};
 	UPROPERTY(BlueprintReadWrite, meta=(ExposeOnSpawn))
@@ -64,10 +68,17 @@ public:
 	static bool GetNodePartInfo(UPARAM(ref)FHoudiniNode& InNode, int32 PartId, EHoudiniPartType& Type, int32& FaceCount, int32& VertexCount, int32& PointCount);
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
 	static int32 GetNodeItemCount(UPARAM(ref)FHoudiniNode& InNode, int32 PartId, EAttributeOwner Type);
+
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static int32 CreateNode(int32 InParentId = -1, const FString& InNodeName = TEXT("SOP/null"), const FString& InNodeLabel = TEXT("Input"));
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static int32 CreateInputNode(const FString& InNodeLabel);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension", meta=(ToolTip="Counts is vertex count, face count, point count"))
+	static bool SetPartInfo(const FHoudiniNode& InNode, int32 InPartId, FIntVector Counts, bool bCreateDefaultP = true);
 	
 	template<typename TStruct>
-	static void SetArrayOfStructOnNode(const TArray<TStruct>& InArrayOfStruct, const FHoudiniNode& InNode, int32 PartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
-	static void SetArrayOfStructOnNodeInternal(const FScriptArray& InArrayOfStruct,	const UScriptStruct* InStruct, const FHoudiniNode& InNode, int32 PartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
+	static bool SetArrayOfStructOnNode(const TArray<TStruct>& InArrayOfStruct, const FHoudiniNode& InNode, int32 PartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
+	static bool SetArrayOfStructOnNodeInternal(const FScriptArray& InArrayOfStruct,	const UScriptStruct* InStruct, const FHoudiniNode& InNode, int32 PartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
 
 	template<typename TStruct>
 	static void GetArrayOfStructOnNode(TArray<TStruct>& InArrayOfStruct, FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
@@ -84,11 +95,11 @@ public:
 };
 
 template <typename TStruct>
-void UHoudiniEngineBPExtension::SetArrayOfStructOnNode(const TArray<TStruct>& InArrayOfStruct,
+bool UHoudiniEngineBPExtension::SetArrayOfStructOnNode(const TArray<TStruct>& InArrayOfStruct,
 	const FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel, bool bCommitGeo)
 {
 	// InArrayOfStruct
-	UHoudiniEngineBPExtension::SetArrayOfStructOnNodeInternal(reinterpret_cast<const FScriptArray&>(InArrayOfStruct),TBaseStructure<TStruct>::Get(),InNode,InPartId,ImportLevel,bCommitGeo);
+	return UHoudiniEngineBPExtension::SetArrayOfStructOnNodeInternal(reinterpret_cast<const FScriptArray&>(InArrayOfStruct),TBaseStructure<TStruct>::Get(),InNode,InPartId,ImportLevel,bCommitGeo);
 }
 
 template <typename TStruct>

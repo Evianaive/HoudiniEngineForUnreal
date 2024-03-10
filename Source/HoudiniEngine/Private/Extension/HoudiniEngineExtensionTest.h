@@ -9,7 +9,7 @@
 
 class UHoudiniAssetComponent;
 
-USTRUCT()
+USTRUCT(BlueprintType)
 struct FHoudiniEngineExtensionTest
 {
 	GENERATED_BODY()
@@ -17,12 +17,12 @@ struct FHoudiniEngineExtensionTest
 	int8 int8{0};
 	UPROPERTY(EditAnywhere)
 	int16 int16{0};
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	int32 int32{0};
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	int64 int64{0};
 	
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	uint8 uint8{0};
 	UPROPERTY(EditAnywhere)
 	uint16 uint16{0};
@@ -31,17 +31,17 @@ struct FHoudiniEngineExtensionTest
 	UPROPERTY(EditAnywhere)
 	uint64 uint64{0};
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	float float32{0.f};
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	double float64{0.f};
 	
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	FVector FVector{};
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	FVector2D FVector2D{};
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	FString String{};
 };
 
@@ -65,7 +65,7 @@ public:
 	UFUNCTION(CallInEditor,BlueprintCallable)
 	void Test();
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere,BlueprintReadWrite)
 	TArray<FHoudiniEngineExtensionTest> TestDatum;
 };
 

@@ -1,5 +1,6 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
-
+PRAGMA_DISABLE_INLINING
+PRAGMA_DISABLE_OPTIMIZATION
 
 #include "HoudiniEngineBPExtension.h"
 
@@ -129,15 +130,85 @@ int32 UHoudiniEngineBPExtension::GetNodeItemCount(FHoudiniNode& InNode, int32 In
 	return Count;
 }
 
-void UHoudiniEngineBPExtension::SetArrayOfStructOnNodeInternal(
+int32 UHoudiniEngineBPExtension::CreateNode(int32 InParentId, const FString& InNodeName, const FString& InNodeLabel)
+{
+	int32 OutNodeId = -1;
+	FHoudiniEngineUtils::CreateNode(InParentId,InNodeName,InNodeLabel,true,&OutNodeId);
+	return OutNodeId;
+}
+
+int32 UHoudiniEngineBPExtension::CreateInputNode(const FString& InNodeLabel)
+{
+	int32 OutNodeId = -1;
+	FHoudiniEngineUtils::CreateInputNode(InNodeLabel,OutNodeId);
+	return OutNodeId;
+}
+
+bool UHoudiniEngineBPExtension::SetPartInfo(const FHoudiniNode& InNode, int32 InPartId, FIntVector Counts, bool bCreateDefaultP)
+{
+	HAPI_PartInfo Part;
+	FHoudiniApi::PartInfo_Init(&Part);
+	Part.id = InPartId;
+	Part.nameSH = 0;
+	Part.attributeCounts[HAPI_ATTROWNER_POINT] = 0;
+	Part.attributeCounts[HAPI_ATTROWNER_PRIM] = 0;
+	Part.attributeCounts[HAPI_ATTROWNER_VERTEX] = 0;
+	Part.attributeCounts[HAPI_ATTROWNER_DETAIL] = 0;
+	Part.vertexCount = Counts.X;
+	Part.faceCount = Counts.Y;
+	Part.pointCount = Counts.Z;
+	Part.type = HAPI_PARTTYPE_MESH;
+	
+	HOUDINI_CHECK_ERROR_RETURN(FHoudiniApi::SetPartInfo(
+		InNode.Session, InNode.NodeId, InPartId, &Part),false);
+
+	// Add Default P Attrib
+	if(bCreateDefaultP)
+	{
+		HAPI_AttributeInfo AttributeInfoPoint;
+		FHoudiniApi::AttributeInfo_Init(&AttributeInfoPoint);
+		AttributeInfoPoint.count = Counts.Z;
+		AttributeInfoPoint.tupleSize = 3;
+		AttributeInfoPoint.exists = true;
+		AttributeInfoPoint.owner = HAPI_ATTROWNER_POINT;
+		AttributeInfoPoint.storage = HAPI_STORAGETYPE_FLOAT;
+		AttributeInfoPoint.originalOwner = HAPI_ATTROWNER_INVALID;
+	
+		FHoudiniApi::AddAttribute(
+		InNode.Session, InNode.NodeId, InPartId,
+		HAPI_UNREAL_ATTRIB_POSITION, &AttributeInfoPoint);
+#if 1
+		// TArray<float> EmptyArray{0.0f};
+		const FVector3f DefaultPos{0,0,0};
+		// FHoudiniApi::SetAttributeFloatUniqueData(InNode.Session,InNode.NodeId,PartId,
+		// 	HAPI_UNREAL_ATTRIB_POSITION,&AttributeInfoPoint,&DefaultPos.X,3,0,InArrayOfStruct.Num());
+
+		HOUDINI_CHECK_ERROR_RETURN(FHoudiniEngineUtils::HapiSetAttributeFloatUniqueData(
+					DefaultPos.X, InNode.NodeId, 0, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint), false);
+#else
+		// Set the point's position
+		FVector3f ObjectPosition{4,5,6};
+		TArray<float> Position;
+		for (int i = 0; i<InArrayOfStruct.Num();i++)
+		{
+			Position.Append({ObjectPosition.X,ObjectPosition.Y,ObjectPosition.Z});	
+		}
+		// Now that we have raw positions, we can upload them for our attribute.
+		FHoudiniEngineUtils::HapiSetAttributeFloatData(
+			Position, InNode.NodeId, PartId, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint);
+#endif
+	}
+	return true;
+}
+
+bool UHoudiniEngineBPExtension::SetArrayOfStructOnNodeInternal(
 	const FScriptArray& InArrayOfStruct,
 	const UScriptStruct* InStruct,
 	const FHoudiniNode& InNode,
 	int32 PartId,
 	EAttributeOwner ImportLevel,
 	bool bCommitGeo)
-{
-	// Todo 增加默认设置 P 属性如果ImportLevel为Point 
+{	
 	FDataExchange_Struct ExchangeData{InStruct};
 	FUnfoldDataVisitor UnfoldDataVisitor{nullptr};
 	const int32 Size = InStruct->GetStructureSize();
@@ -150,8 +221,13 @@ void UHoudiniEngineBPExtension::SetArrayOfStructOnNodeInternal(
 	}
 	FExportDataVisitor ExportDataVisitor{InNode.Session,InNode.NodeId,static_cast<HAPI_AttributeOwner>(ImportLevel),PartId};
 	ExchangeData.Accept(ExportDataVisitor);
+	const auto SessionId = FHoudiniEngine::Get().GetSession();
 	if(bCommitGeo)
-		FHoudiniApi::CommitGeo(InNode.Session,InNode.NodeId);
+	{
+		HOUDINI_CHECK_ERROR_RETURN(FHoudiniApi::CommitGeo(
+			SessionId,InNode.NodeId),false);
+	}
+	return true;
 }
 
 void UHoudiniEngineBPExtension::GetArrayOfStructOnNodeInternal(
@@ -250,3 +326,5 @@ DEFINE_FUNCTION(UHoudiniEngineBPExtension::execGetArrayOfStructOnNode_BP)
 	GetArrayOfStructOnNodeInternal(*reinterpret_cast<FScriptArray*>(ArrayAddr),InnerStruct,InNode,InPartId,ImportLevel);
 	P_NATIVE_END;
 }
+PRAGMA_ENABLE_INLINING
+PRAGMA_ENABLE_OPTIMIZATION
