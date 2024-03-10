@@ -330,21 +330,23 @@ void FDataExchange_POD::ArrayPropToContainer(const uint8* Ptr)
 	FScriptArrayHelper TempHelper(ArrayProperty,Ptr);
 	const int32 Num = TempHelper.Num();
 	const int32 AddStart = ContainerHelper.AddValues(Num);
-	
-	if(ConvertSpecialization.ToStruct)
+	if(Num!=0)
 	{
-		for(int32 i = 0; i<Num; i++)
+		if(ConvertSpecialization.ToStruct)
 		{
-			uint8* NewElem = ContainerHelper.GetRawPtr(AddStart+i);
-			Ptr = TempHelper.GetRawPtr(i);
-			const auto ConvertResult = ConvertSpecialization.PerformConvert<true>(Ptr);
-			FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
+			for(int32 i = 0; i<Num; i++)
+			{
+				uint8* NewElem = ContainerHelper.GetRawPtr(AddStart+i);
+				Ptr = TempHelper.GetRawPtr(i);
+				const auto ConvertResult = ConvertSpecialization.PerformConvert<true>(Ptr);
+				FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
+			}
 		}
-	}
-	else
-	{
-		uint8* NewElem = ContainerHelper.GetRawPtr(AddStart);
-		FMemory::Memcpy(NewElem,TempHelper.GetRawPtr(0),Property->ElementSize);
+		else
+		{
+			uint8* NewElem = ContainerHelper.GetRawPtr(AddStart);
+			FMemory::Memcpy(NewElem,TempHelper.GetRawPtr(0),Num * Property->ElementSize);
+		}
 	}
 	SizeFixedArray.Add(Num);
 	Info.count+=1;
@@ -603,6 +605,8 @@ void FExportDataVisitor::operator()(T& Gather)
 		SessionId,NodeId,PartId
 		,String,Gather.Info,
 		{&Gather.SizeFixedArray,bTryEncode});
+	
+	Gather.PackArray();
 }
 template void FExportDataVisitor::operator()(FDataExchange_POD& PODExport);
 template void FExportDataVisitor::operator()(FDataExchange_String& PODExport);

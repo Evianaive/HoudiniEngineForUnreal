@@ -54,7 +54,7 @@ UCLASS()
 class HOUDINIENGINE_API UHoudiniEngineBPExtension : public UBlueprintFunctionLibrary
 {
 	GENERATED_BODY()
-
+public:
 	UFUNCTION(BlueprintPure, Category = "HoudiniEngine Extension", meta = (NativeMakeFunc, DisplayName = "Make Houdini Node"))
 	static FHoudiniNode MakeHoudiniNode_BP(int32 InNodeId) { return FHoudiniNode(InNodeId); }
 

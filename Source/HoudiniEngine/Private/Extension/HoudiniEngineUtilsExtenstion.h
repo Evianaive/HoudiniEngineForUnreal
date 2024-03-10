@@ -266,7 +266,7 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 					StringStart += NumSent;
 				}
 			}
-			else if(InAttributeInfo.count > 0)
+			else if(InAttributeInfo.totalArrayElements > 0)
 			{
 				// Set all the attribute values once
 				Result = (*Traits::Export)(
@@ -282,7 +282,7 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 					InSessionId,
 					InNodeId, InPartId, TCHAR_TO_ANSI(*InAttributeName),
 					&InAttributeInfo, reinterpret_cast<ElementType*>(&NotNull), 0,
-					SizesFixedArray.GetData(),0, 0);
+					SizesFixedArray.GetData(),0, SizesFixedArray.Num());
 			}
 			return Result;
 		}
