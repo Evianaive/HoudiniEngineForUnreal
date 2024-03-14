@@ -1,6 +1,6 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
-PRAGMA_DISABLE_INLINING
-PRAGMA_DISABLE_OPTIMIZATION
+//PRAGMA_DISABLE_INLINING
+//PRAGMA_DISABLE_OPTIMIZATION
 
 #include "HoudiniEngineBPExtension.h"
 
@@ -8,7 +8,21 @@ PRAGMA_DISABLE_OPTIMIZATION
 #include "HoudiniEngineUtils.h"
 #include "HoudiniOutputTranslator.h"
 #include "UnrealStructExpand.h"
+#include "Engine/UserDefinedStruct.h"
 
+
+UUserDefinedStruct* UScriptStructWrapper::GetStruct()
+{
+	if(UUserDefinedStruct* Resolved = Cast<UUserDefinedStruct>(ScriptStruct.ResolveObject()))
+		return Resolved;	
+	return nullptr;
+}
+
+void UScriptStructWrapper::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	if(GET_MEMBER_NAME_CHECKED(UScriptStructWrapper,ScriptStruct)==PropertyChangedEvent.GetPropertyName())
+		SaveConfig();
+}
 
 FHoudiniNodeCookState::FHoudiniNodeCookState()
 	:bCooked(false)
@@ -351,5 +365,44 @@ DEFINE_FUNCTION(UHoudiniEngineBPExtension::execGetArrayOfStructOnNode_BP)
 	}
 	P_NATIVE_END;
 }
-PRAGMA_ENABLE_INLINING
-PRAGMA_ENABLE_OPTIMIZATION
+
+void UHoudiniEngineBPExtension::GetStructPropertyNameArray(UScriptStruct* ScriptStruct, TArray<FName>& Properties)
+{
+	for(const auto* Prop : TFieldRange<FProperty>(ScriptStruct))
+	{
+		Properties.Add(Prop->GetFName());
+	}
+}
+
+void UHoudiniEngineBPExtension::GetStructPropertyAuthorNameArray(UScriptStruct* ScriptStruct, TArray<FString>& Properties)
+{
+	for(const auto* Prop : TFieldRange<FProperty>(ScriptStruct))
+	{
+		Properties.Add(Prop->GetAuthoredName());
+	}
+}
+
+bool UHoudiniEngineBPExtension::GetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct,
+													TMap<FName, FString>& MetaData)
+{
+	if(auto Property = ScriptStruct->FindPropertyByName(PropertyName))
+	{
+		MetaData = *Property->GetMetaDataMap();
+		return true;
+	}
+	return false;
+}
+
+bool UHoudiniEngineBPExtension::SetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct,
+	const FName& MetaDataName, const FString& MetaDataValue)
+{
+	if(auto Property = ScriptStruct->FindPropertyByName(PropertyName))
+	{
+		Property->SetMetaData(MetaDataName,FString(MetaDataValue));
+		return true;
+	}
+	return false;
+}
+
+//PRAGMA_ENABLE_INLINING
+//PRAGMA_ENABLE_OPTIMIZATION

@@ -8,6 +8,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "HoudiniEngineBPExtension.generated.h"
 
+class UUserDefinedStruct;
 /**
  * 
  */
@@ -18,6 +19,18 @@ enum class EAttributeOwner : uint8
 	Point,
 	Prim,
 	Detail
+};
+
+UCLASS(BlueprintType,Config=HoudiniEngineExtension)
+class UScriptStructWrapper : public UObject
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere,BlueprintReadWrite,Config,meta=(AllowedClasses="/Script/Engine.UserDefinedStruct"))
+	FSoftObjectPath ScriptStruct;
+	UFUNCTION(BlueprintCallable,BlueprintPure)
+	UUserDefinedStruct* GetStruct();
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 };
 
 USTRUCT(BlueprintType)
@@ -91,7 +104,15 @@ public:
 	
 	DECLARE_FUNCTION(execSetArrayOfStructOnNode_BP);
 	DECLARE_FUNCTION(execGetArrayOfStructOnNode_BP);
-	
+
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static void GetStructPropertyNameArray(UScriptStruct* ScriptStruct, TArray<FName>& Properties);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static void GetStructPropertyAuthorNameArray(UScriptStruct* ScriptStruct, TArray<FString>& Properties);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool GetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct, TMap<FName,FString>& MetaData);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool SetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct, const FName& MetaDataName, const FString& MetaDataValue);
 };
 
 template <typename TStruct>
