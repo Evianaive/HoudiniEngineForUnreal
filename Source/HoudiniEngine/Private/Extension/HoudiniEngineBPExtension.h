@@ -85,9 +85,9 @@ public:
 	static bool GetArrayOfStructOnNodeInternal(FScriptArray& InArrayOfStruct, const UScriptStruct* InStruct, FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
 	
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(ArrayParm = "InArrayOfStruct"))
-	static void SetArrayOfStructOnNode_BP(const TArray<int32>& InArrayOfStruct, UPARAM(ref) const FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
+	static bool SetArrayOfStructOnNode_BP(const TArray<int32>& InArrayOfStruct, UPARAM(ref) const FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(ArrayParm = "InArrayOfStruct"))
-	static void GetArrayOfStructOnNode_BP(TArray<int32>& InArrayOfStruct, UPARAM(ref) const FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
+	static bool GetArrayOfStructOnNode_BP(TArray<int32>& InArrayOfStruct, UPARAM(ref) const FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
 	
 	DECLARE_FUNCTION(execSetArrayOfStructOnNode_BP);
 	DECLARE_FUNCTION(execGetArrayOfStructOnNode_BP);

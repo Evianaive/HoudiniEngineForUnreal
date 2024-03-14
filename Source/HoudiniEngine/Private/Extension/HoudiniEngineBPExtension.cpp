@@ -271,18 +271,21 @@ bool UHoudiniEngineBPExtension::GetArrayOfStructOnNodeInternal(
 	return Result;
 }
 
-void UHoudiniEngineBPExtension::SetArrayOfStructOnNode_BP(
+bool UHoudiniEngineBPExtension::SetArrayOfStructOnNode_BP(
 	const TArray<int32>& InArrayOfStruct,
 	const FHoudiniNode& InNode, int32 PartId,
 	EAttributeOwner ImportLevel,bool bCommitGeo)
 {
 	//We should never enter this
+	return false;
 }
 
-void UHoudiniEngineBPExtension::GetArrayOfStructOnNode_BP(
+bool UHoudiniEngineBPExtension::GetArrayOfStructOnNode_BP(
 	TArray<int32>& InArrayOfStruct, const FHoudiniNode& InNode,
 	int32 InPartId, EAttributeOwner ImportLevel)
 {
+	//We should never enter this
+	return false;
 }
 
 DEFINE_FUNCTION(UHoudiniEngineBPExtension::execSetArrayOfStructOnNode_BP)
@@ -308,8 +311,7 @@ DEFINE_FUNCTION(UHoudiniEngineBPExtension::execSetArrayOfStructOnNode_BP)
 
 	P_FINISH;
 	P_NATIVE_BEGIN;
-	//Todo Add return bool
-	SetArrayOfStructOnNodeInternal(*reinterpret_cast<const FScriptArray*>(ArrayAddr),InnerStruct,InNode,InPartId,ImportLevel,bCommitGeo);
+	*(bool*)RESULT_PARAM = SetArrayOfStructOnNodeInternal(*reinterpret_cast<const FScriptArray*>(ArrayAddr),InnerStruct,InNode,InPartId,ImportLevel,bCommitGeo);
 	P_NATIVE_END;
 	// InnerProp->DestroyValue(StorageSpace);
 }
@@ -338,13 +340,15 @@ DEFINE_FUNCTION(UHoudiniEngineBPExtension::execGetArrayOfStructOnNode_BP)
 	P_NATIVE_BEGIN;
 	int32 Count = GetNodeItemCount(InNode,InPartId,ImportLevel);
 	if(Count<=0)
-		//Todo Should we return like this?
-		return;
-	
-	FScriptArrayHelper Helper{ArrayProperty,ArrayAddr};
-	Helper.AddValues(Count-Helper.Num());
-	//Todo Add return bool
-	GetArrayOfStructOnNodeInternal(*reinterpret_cast<FScriptArray*>(ArrayAddr),InnerStruct,InNode,InPartId,ImportLevel);
+	{
+		*(bool*)RESULT_PARAM = false;
+	}
+	else
+	{
+		FScriptArrayHelper Helper{ArrayProperty,ArrayAddr};
+		Helper.AddValues(Count-Helper.Num());
+		*(bool*)RESULT_PARAM = GetArrayOfStructOnNodeInternal(*reinterpret_cast<FScriptArray*>(ArrayAddr),InnerStruct,InNode,InPartId,ImportLevel);
+	}
 	P_NATIVE_END;
 }
 PRAGMA_ENABLE_INLINING
