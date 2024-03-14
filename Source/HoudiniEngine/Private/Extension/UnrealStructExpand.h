@@ -372,13 +372,24 @@ struct FDataExchange_Struct : public FDataExchange_Base
 		reinterpret_cast<FDataExchange_Struct&>(NewChild).template InitByParent<TVariant>(*this);
 		return &NewChild;
 	}
-	template<typename TVisitor>
-	void Accept(TVisitor&& Visitor)
+	template<typename TVisitor, typename Ret = decltype(DeclVal<TVisitor>()(DeclVal<FDataGather_Variant>()))>
+	typename TEnableIf<std::is_same_v<Ret,void>>::Type Accept(TVisitor&& Visitor)
 	{
+		// using ReturnType = decltype(Visitor(DeclVal<decltype(Children)::ElementType>()));
 		for(auto& Child : Children)
 		{
 			::Visit(Visitor,Child);
 		}
+	}
+	template<typename TVisitor, typename Ret = decltype(DeclVal<TVisitor>()(DeclVal<FDataGather_Variant>()))>
+	typename TEnableIf<!std::is_same_v<Ret,void>,Ret>::Type Accept(TVisitor&& Visitor)
+	{
+		Ret Result = 1;
+		for(auto& Child : Children)
+		{
+			Result |= ::Visit(Visitor,Child);
+		}
+		return Result;
 	}
 
 	void GetConvertSpecializationTo(const uint8* InData, FInstancedStruct& OutConversion)
@@ -474,16 +485,17 @@ struct FFoldDataVisitor
 	};
 	void Reset();
 	void Reset(uint8* StructPtr);
-	void ConvertPtr(FDataExchange_Struct& StructExport, FInstancedStruct& OutInstanceStruct)
+	bool ConvertPtr(FDataExchange_Struct& StructExport, FInstancedStruct& OutInstanceStruct)
 	{
 		uint8* CachePtr = Ptr;
 		if(StructExport.ConvertSpecialization.ToStruct)
 			Ptr = OutInstanceStruct.GetMutableMemory();
-		StructExport.Accept(*this);
+		bool Result = StructExport.Accept(*this);
 		if(StructExport.ConvertSpecialization.ToStruct)
 			StructExport.ConvertSpecialization.ConvertBackRaw(Ptr,CachePtr);
+		return Result;
 	}
-	void operator()(FDataExchange_Struct& StructExport)
+	bool operator()(FDataExchange_Struct& StructExport)
 	{
 		/*必须从后往前转换成，对于Array属性，其序号无法维护，因为有SizeFixedArray，需要对每个Array都维护一个序号，这是不可能的*/
 		TGuardValue GuardPtr(Ptr,Ptr+StructExport.OffsetInParentStruct);
@@ -492,11 +504,12 @@ struct FFoldDataVisitor
 		FInstancedStruct ConvertResult{StructExport.ConvertSpecialization.FromStruct};
 		if(StructExport.ArrayProperty)
 		{
+			bool Result = true;
 			FScriptArrayHelper Helper(StructExport.ArrayProperty,Ptr);
 			if(StructExport.ChildSizeFixedArray == nullptr)
 			{
 				UE_LOG(LogTemp,Log,TEXT("Invalid SizeFixedArray"));
-				return;
+				return false;
 			}
 			const int32 Num = StructExport.ChildSizeFixedArray->Last();
 			const int32 Start = Helper.AddValues(Num);
@@ -505,24 +518,28 @@ struct FFoldDataVisitor
 			for(int32 i = Start;i<Start+Helper.Num();i++)
 			{
 				Ptr = Helper.GetRawPtr(i);
-				ConvertPtr(StructExport,ConvertResult);
+				Result &= ConvertPtr(StructExport,ConvertResult);
 			}
 			
 			AddElementCount=Helper.Num();
-			StructExport.Accept(*this);
+			Result &= StructExport.Accept(*this);
+			return Result;
 		}
 		else
 		{
 			// AddElementCount = Normal;
 			// AddElementCount = FMath::Max(Normal,AddElementCount);
-			ConvertPtr(StructExport,ConvertResult);
+			return ConvertPtr(StructExport,ConvertResult);
 		}
 	}
 	template<typename Export>
-	void operator()(Export& PODExport)
+	bool operator()(Export& PODExport)
 	{
 		FDataExchange_Info& AsExport = PODExport;
 		TGuardValue GuardPtr(Ptr,Ptr+AsExport.OffsetInParentStruct);
+
+		if(!AsExport.Info.exists)
+			return false;
 		
 		if(AddElementCount>InArrayOfStructSignal)
 		{
@@ -545,6 +562,7 @@ struct FFoldDataVisitor
 				AddElementCount==Normal?PODExport.ContainerToProp(Ptr):PODExport.ContainerToProp<false>(Ptr);
 			}
 		}
+		return true;
 	}
 };
 
@@ -572,13 +590,14 @@ public:
 			Ptr = OutInstanceStruct.GetMutableMemory();
 		}
 	}
-	void operator()(FDataExchange_Struct& StructExport)
+	bool operator()(FDataExchange_Struct& StructExport)
 	{
 		// ScopeExitSupport::TScopeGuard<>();
 		// ON_SCOPE_EXIT{return;}
 		TGuardValue GuardPtr(Ptr,Ptr+StructExport.OffsetInParentStruct);
 		TGuardValue GuardArray(bInArrayOfStruct,(bInArrayOfStruct||StructExport.bArrayOfStruct));
 		FInstancedStruct ConvertResult;
+		bool Result = true;
 		if(StructExport.ArrayProperty)
 		{
 			FScriptArrayHelper Helper(StructExport.ArrayProperty,Ptr);
@@ -587,22 +606,23 @@ public:
 			{
 				Ptr = Helper.GetRawPtr(i);
 				ConvertPtr(StructExport,ConvertResult);
-				StructExport.Accept(*this);
+				Result &= StructExport.Accept(*this);
 			}
 			//Todo 这里可以更改为只给其中一个成员吗，在export时也只使用其上面的
 			AddElementCount = Helper.Num();
-			StructExport.Accept(*this);
+			Result &= StructExport.Accept(*this);
 		}
 		else
 		{
 			// AddElementCount = Normal;
 			// AddElementCount = FMath::Max(Normal,AddElementCount);
 			ConvertPtr(StructExport,ConvertResult);
-			StructExport.Accept(*this);
+			Result &= StructExport.Accept(*this);
 		}
+		return Result;
 	}
 	template<typename Export>
-	void operator()(Export& PODExport)
+	bool operator()(Export& PODExport)
 	{
 		FDataExchange_Info& AsExport = PODExport;
 		TGuardValue GuardPtr(Ptr,Ptr+AsExport.OffsetInParentStruct);
@@ -628,28 +648,8 @@ public:
 				AddElementCount==Normal?PODExport.PropToContainer(Ptr):PODExport.PropToContainer<false>(Ptr);
 			}
 		}
+		return true;
 	}
-	// void operator()(FDataGather_StringExport& StringExport)
-	// {
-	// 	const uint8* PropertyPtr = Ptr+StringExport.OffsetInParentStruct;
-	// 	if(bInArrayOfStruct)
-	// 	{
-	// 		StringExport.GetInputProperty()
-	// 		->ExportTextItem_Direct(StringExport.Container.Add_GetRef({}),PropertyPtr,PropertyPtr,nullptr,0);
-	// 	}
-	// 	else
-	// 	{
-	// 		if(StringExport.ArrayProperty)
-	// 		{
-	// 			FScriptArrayHelper Helper(StringExport.ArrayProperty,PropertyPtr);
-	// 			for(int32 i = 0;i<Helper.Num();i++)
-	// 			{
-	// 				Helper.GetRawPtr(i);
-	// 				StringExport.Container.Add_GetRef({});
-	// 			}
-	// 		}		
-	// 	}
-	// }
 };
 
 struct FExportDataVisitor
@@ -660,12 +660,12 @@ struct FExportDataVisitor
 	HAPI_PartId PartId {0};
 	bool bTryEncode {false};
 
-	void operator()(FDataExchange_Struct& StructExport)
+	bool operator()(FDataExchange_Struct& StructExport)
 	{
-		StructExport.Accept(*this);
+		return StructExport.Accept(*this);
 	}
 	template<typename Export>
-	void operator()(Export& Gather);
+	bool operator()(Export& Gather);
 };
 
 struct FImportDataVisitor
@@ -677,14 +677,14 @@ struct FImportDataVisitor
 
 	FDataExchange_Struct* ArrayOfStructExport {nullptr};
 	
-	void operator()(FDataExchange_Struct& StructExport)
+	bool operator()(FDataExchange_Struct& StructExport)
 	{
 		if(StructExport.bArrayOfStruct)
 		{
 			TGuardValue GuardPtr(ArrayOfStructExport,&StructExport);
 		}		
-		StructExport.Accept(*this);
+		return StructExport.Accept(*this);
 	}
 	template<typename Export>
-	void operator()(Export& Gather);
+	bool operator()(Export& Gather);
 };

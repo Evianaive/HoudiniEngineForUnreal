@@ -44,7 +44,7 @@ struct FHoudiniNode
 	bool CookNodeNode(bool bWaitForCompletion = true);
 	bool IsValid() const
 	{
-		return NodeId != -1;
+		return NodeId != -1 && Session!=nullptr;
 	}
 	
 	const HAPI_Session* Session {nullptr};
@@ -81,8 +81,8 @@ public:
 	static bool SetArrayOfStructOnNodeInternal(const FScriptArray& InArrayOfStruct,	const UScriptStruct* InStruct, const FHoudiniNode& InNode, int32 PartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
 
 	template<typename TStruct>
-	static void GetArrayOfStructOnNode(TArray<TStruct>& InArrayOfStruct, FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
-	static void GetArrayOfStructOnNodeInternal(FScriptArray& InArrayOfStruct, const UScriptStruct* InStruct, FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
+	static bool GetArrayOfStructOnNode(TArray<TStruct>& InArrayOfStruct, FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
+	static bool GetArrayOfStructOnNodeInternal(FScriptArray& InArrayOfStruct, const UScriptStruct* InStruct, FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel);
 	
 	UFUNCTION(BlueprintCallable, CustomThunk, meta=(ArrayParm = "InArrayOfStruct"))
 	static void SetArrayOfStructOnNode_BP(const TArray<int32>& InArrayOfStruct, UPARAM(ref) const FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);
@@ -103,12 +103,12 @@ bool UHoudiniEngineBPExtension::SetArrayOfStructOnNode(const TArray<TStruct>& In
 }
 
 template <typename TStruct>
-void UHoudiniEngineBPExtension::GetArrayOfStructOnNode(TArray<TStruct>& InArrayOfStruct, FHoudiniNode& InNode,
+bool UHoudiniEngineBPExtension::GetArrayOfStructOnNode(TArray<TStruct>& InArrayOfStruct, FHoudiniNode& InNode,
 	int32 InPartId, EAttributeOwner ImportLevel)
 {
 	int32 Count = GetNodeItemCount(InNode,InPartId,ImportLevel);
 	if(Count<=0)
-		return;
+		return Count==0;
 	InArrayOfStruct.SetNumZeroed(Count);
-	GetArrayOfStructOnNodeInternal(reinterpret_cast<FScriptArray&>(InArrayOfStruct),TBaseStructure<TStruct>::Get(),InNode,InPartId);
+	return GetArrayOfStructOnNodeInternal(reinterpret_cast<FScriptArray&>(InArrayOfStruct),TBaseStructure<TStruct>::Get(),InNode,InPartId);
 }

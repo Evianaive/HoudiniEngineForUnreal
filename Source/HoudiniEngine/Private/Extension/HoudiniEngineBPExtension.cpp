@@ -146,6 +146,11 @@ int32 UHoudiniEngineBPExtension::CreateInputNode(const FString& InNodeLabel)
 
 bool UHoudiniEngineBPExtension::SetPartInfo(const FHoudiniNode& InNode, int32 InPartId, FIntVector Counts, bool bCreateDefaultP)
 {
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
 	HAPI_PartInfo Part;
 	FHoudiniApi::PartInfo_Init(&Part);
 	Part.id = InPartId;
@@ -208,49 +213,62 @@ bool UHoudiniEngineBPExtension::SetArrayOfStructOnNodeInternal(
 	int32 PartId,
 	EAttributeOwner ImportLevel,
 	bool bCommitGeo)
-{	
+{
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
 	FDataExchange_Struct ExchangeData{InStruct};
 	FUnfoldDataVisitor UnfoldDataVisitor{nullptr};
 	const int32 Size = InStruct->GetStructureSize();
 	const uint8* Data = static_cast<const uint8*>(InArrayOfStruct.GetData());
+	bool Result = true;
 	for(int i=0;i<InArrayOfStruct.Num();i++)
 	{
 		UnfoldDataVisitor.Reset(Data);
-		ExchangeData.Accept(UnfoldDataVisitor);
+		Result &= ExchangeData.Accept(UnfoldDataVisitor);
 		Data+=Size;
 	}
 	FExportDataVisitor ExportDataVisitor{InNode.Session,InNode.NodeId,static_cast<HAPI_AttributeOwner>(ImportLevel),PartId};
-	ExchangeData.Accept(ExportDataVisitor);
+	Result &= ExchangeData.Accept(ExportDataVisitor);
 	const auto SessionId = FHoudiniEngine::Get().GetSession();
 	if(bCommitGeo)
 	{
 		HOUDINI_CHECK_ERROR_RETURN(FHoudiniApi::CommitGeo(
 			SessionId,InNode.NodeId),false);
 	}
-	return true;
+	return Result;
 }
 
-void UHoudiniEngineBPExtension::GetArrayOfStructOnNodeInternal(
+bool UHoudiniEngineBPExtension::GetArrayOfStructOnNodeInternal(
 	FScriptArray& InArrayOfStruct,
 	const UScriptStruct* InStruct,
 	FHoudiniNode& InNode,
 	int32 PartId,
 	EAttributeOwner ImportLevel)
 {
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
 	FDataExchange_Struct ExchangeData{InStruct};
 	FFoldDataVisitor FoldDataVisitor{nullptr};
 	
 	const int32 Size = InStruct->GetStructureSize();
 	const int32 Count = InArrayOfStruct.Num();
-	uint8* Data = static_cast<uint8*>(InArrayOfStruct.GetData()) + Size*(Count-1);	
+	uint8* Data = static_cast<uint8*>(InArrayOfStruct.GetData()) + Size*(Count-1);
+	bool Result = true;
 	for(int i=Count-1;i>=0;i--)
 	{
 		FoldDataVisitor.Reset(Data);
-		ExchangeData.Accept(FoldDataVisitor);
+		Result &= ExchangeData.Accept(FoldDataVisitor);
 		Data-=Size;
 	}
 	FImportDataVisitor ImportDataVisitor{InNode.Session,InNode.NodeId,static_cast<HAPI_AttributeOwner>(ImportLevel),PartId};
-	ExchangeData.Accept(ImportDataVisitor);
+	Result &= ExchangeData.Accept(ImportDataVisitor);
+	return Result;
 }
 
 void UHoudiniEngineBPExtension::SetArrayOfStructOnNode_BP(
@@ -290,6 +308,7 @@ DEFINE_FUNCTION(UHoudiniEngineBPExtension::execSetArrayOfStructOnNode_BP)
 
 	P_FINISH;
 	P_NATIVE_BEGIN;
+	//Todo Add return bool
 	SetArrayOfStructOnNodeInternal(*reinterpret_cast<const FScriptArray*>(ArrayAddr),InnerStruct,InNode,InPartId,ImportLevel,bCommitGeo);
 	P_NATIVE_END;
 	// InnerProp->DestroyValue(StorageSpace);
@@ -319,10 +338,12 @@ DEFINE_FUNCTION(UHoudiniEngineBPExtension::execGetArrayOfStructOnNode_BP)
 	P_NATIVE_BEGIN;
 	int32 Count = GetNodeItemCount(InNode,InPartId,ImportLevel);
 	if(Count<=0)
+		//Todo Should we return like this?
 		return;
 	
 	FScriptArrayHelper Helper{ArrayProperty,ArrayAddr};
 	Helper.AddValues(Count-Helper.Num());
+	//Todo Add return bool
 	GetArrayOfStructOnNodeInternal(*reinterpret_cast<FScriptArray*>(ArrayAddr),InnerStruct,InNode,InPartId,ImportLevel);
 	P_NATIVE_END;
 }

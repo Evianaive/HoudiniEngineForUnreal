@@ -588,7 +588,7 @@ void FDataExchange_POD::FillHapiAttribInfo(HAPI_AttributeInfo& AttributeInfo, co
 }
 
 template <typename T>
-void FExportDataVisitor::operator()(T& Gather)
+bool FExportDataVisitor::operator()(T& Gather)
 {
 	// auto& Gather = reinterpret_cast<FDataGather_PODExport&>(Gather);
 	const FString String = Gather.GetInputProperty()->GetAuthoredName();
@@ -600,19 +600,20 @@ void FExportDataVisitor::operator()(T& Gather)
 
 	// We must add attribute before we set! 
 	FHoudiniApi::AddAttribute(SessionId,NodeId,PartId,TCHAR_TO_ANSI(*String),&Gather.Info);
-	FHoudiniEngineUtilsExtenstion::HapiSetAttribData(
+	HOUDINI_CHECK_RETURN(FHoudiniEngineUtilsExtenstion::HapiSetAttribData(
 		Gather.GetContainer(),
 		SessionId,NodeId,PartId
 		,String,Gather.Info,
-		{&Gather.SizeFixedArray,bTryEncode});
+		{&Gather.SizeFixedArray,bTryEncode}),false);
 	
 	Gather.PackArray();
+	return true;
 }
-template void FExportDataVisitor::operator()(FDataExchange_POD& PODExport);
-template void FExportDataVisitor::operator()(FDataExchange_String& PODExport);
+template bool FExportDataVisitor::operator()(FDataExchange_POD& PODExport);
+template bool FExportDataVisitor::operator()(FDataExchange_String& PODExport);
 
 template <typename T>
-void FImportDataVisitor::operator()(T& Gather)
+bool FImportDataVisitor::operator()(T& Gather)
 {
 	// auto& PODExport = reinterpret_cast<FDataGather_PODExport&>(PODExport);
 	const FString String = Gather.GetInputProperty()->GetAuthoredName();
@@ -621,15 +622,17 @@ void FImportDataVisitor::operator()(T& Gather)
 	FHoudiniApi::AttributeInfo_Init(&TempInfo);
 	FHoudiniApi::GetAttributeInfo(SessionId,NodeId,PartId,TCHAR_TO_ANSI(*String),Owner,&TempInfo);
 
+	if(!TempInfo.exists)
+		return false;
 	//Todo Compare TempInfo with Gather.Info
 	Gather.Info = TempInfo;
 	UE_LOG(LogHoudiniEngine,Log,TEXT("Attrib [%s] Count:%i"),*String,Gather.Info);
 	
-	FHoudiniEngineUtilsExtenstion::HapiGetAttribData(
+	HOUDINI_CHECK_RETURN(FHoudiniEngineUtilsExtenstion::HapiGetAttribData(
 		Gather.GetContainer(),
 		SessionId,NodeId,PartId
 		,String,Gather.Info,
-		&Gather.SizeFixedArray);
+		&Gather.SizeFixedArray),false);
 	
 	// For Array of Struct, get one of the children SizeFixedArray as its SizedFixedArray.
 	// So we can know the size of struct array when we folding struct from their children
@@ -638,6 +641,7 @@ void FImportDataVisitor::operator()(T& Gather)
 		ArrayOfStructExport->ChildSizeFixedArray = &Gather.SizeFixedArray;
 	}
 	Gather.PackArray();
+	return true;
 }
-template void FExportDataVisitor::operator()(FDataExchange_POD& PODExport);
-template void FExportDataVisitor::operator()(FDataExchange_String& PODExport);
+template bool FImportDataVisitor::operator()(FDataExchange_POD& PODExport);
+template bool FImportDataVisitor::operator()(FDataExchange_String& PODExport);
