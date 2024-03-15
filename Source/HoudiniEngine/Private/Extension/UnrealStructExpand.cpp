@@ -600,7 +600,7 @@ bool FExportDataVisitor::operator()(T& Gather)
 
 	// We must add attribute before we set! 
 	FHoudiniApi::AddAttribute(SessionId,NodeId,PartId,TCHAR_TO_ANSI(*String),&Gather.Info);
-	HOUDINI_CHECK_RETURN(FHoudiniEngineUtilsExtenstion::HapiSetAttribData(
+	HOUDINI_CHECK_ERROR_RETURN(FHoudiniEngineUtilsExtenstion::HapiSetAttribData(
 		Gather.GetContainer(),
 		SessionId,NodeId,PartId
 		,String,Gather.Info,
@@ -626,9 +626,9 @@ bool FImportDataVisitor::operator()(T& Gather)
 		return false;
 	//Todo Compare TempInfo with Gather.Info
 	Gather.Info = TempInfo;
-	UE_LOG(LogHoudiniEngine,Log,TEXT("Attrib [%s] Count:%i"),*String,Gather.Info);
+	UE_LOG(LogHoudiniEngine,Log,TEXT("Attrib [%s] Count:%i"),*String,Gather.Info.count);
 	
-	HOUDINI_CHECK_RETURN(FHoudiniEngineUtilsExtenstion::HapiGetAttribData(
+	HOUDINI_CHECK_ERROR_RETURN(FHoudiniEngineUtilsExtenstion::HapiGetAttribData(
 		Gather.GetContainer(),
 		SessionId,NodeId,PartId
 		,String,Gather.Info,

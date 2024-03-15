@@ -55,20 +55,22 @@ bool FHoudiniNode::CookNodeNode(bool bWaitForCompletion)
 	
 	if(CookState.bCooked)
 		return true;
-	
+
+	if(Session == nullptr)
+		Session = FHoudiniEngine::Get().GetSession();
 	// No Cook Options were specified, use the default one
 	if (CookState.Options == nullptr)
 	{
 		// Use the default cook options
 		const HAPI_CookOptions* CookOptions = FHoudiniNodeCookState::GetDefaultCookOptions();
 		HOUDINI_CHECK_ERROR_RETURN(FHoudiniApi::CookNode(
-			FHoudiniEngine::Get().GetSession(), NodeId, CookOptions), false);
+			Session, NodeId, CookOptions), false);
 	}
 	else
 	{
 		// Use the provided CookOptions
 		HOUDINI_CHECK_ERROR_RETURN(FHoudiniApi::CookNode(
-			FHoudiniEngine::Get().GetSession(), NodeId, CookState.Options), false);
+			Session, NodeId, CookState.Options), false);
 	}
 
 	// If we don't need to wait for completion, return now
@@ -115,7 +117,7 @@ bool UHoudiniEngineBPExtension::GetNodePartInfo(
 		return false;
 	
 	HAPI_PartInfo PartInfo;
-	HOUDINI_CHECK_RETURN(FHoudiniApi::GetPartInfo(
+	HOUDINI_CHECK_ERROR_RETURN(FHoudiniApi::GetPartInfo(
 		InNode.Session,InNode.NodeId,PartId,&PartInfo),false);
 	
 	Type = FHoudiniOutputTranslator::ConvertHapiPartType(PartInfo.type);
@@ -269,19 +271,20 @@ bool UHoudiniEngineBPExtension::GetArrayOfStructOnNodeInternal(
 	}
 	FDataExchange_Struct ExchangeData{InStruct};
 	FFoldDataVisitor FoldDataVisitor{nullptr};
+	bool Result = true;
+	
+	FImportDataVisitor ImportDataVisitor{InNode.Session,InNode.NodeId,static_cast<HAPI_AttributeOwner>(ImportLevel),PartId};
+	Result &= ExchangeData.Accept(ImportDataVisitor);
 	
 	const int32 Size = InStruct->GetStructureSize();
 	const int32 Count = InArrayOfStruct.Num();
 	uint8* Data = static_cast<uint8*>(InArrayOfStruct.GetData()) + Size*(Count-1);
-	bool Result = true;
 	for(int i=Count-1;i>=0;i--)
 	{
 		FoldDataVisitor.Reset(Data);
 		Result &= ExchangeData.Accept(FoldDataVisitor);
 		Data-=Size;
 	}
-	FImportDataVisitor ImportDataVisitor{InNode.Session,InNode.NodeId,static_cast<HAPI_AttributeOwner>(ImportLevel),PartId};
-	Result &= ExchangeData.Accept(ImportDataVisitor);
 	return Result;
 }
 
