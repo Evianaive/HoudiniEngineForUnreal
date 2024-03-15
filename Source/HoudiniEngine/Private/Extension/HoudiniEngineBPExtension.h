@@ -78,16 +78,33 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
 	static bool CookNode(UPARAM(ref)FHoudiniNode& Node, bool bWaitForCompletion = true) { return Node.CookNodeNode(bWaitForCompletion); }
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
-	static bool GetNodePartInfo(UPARAM(ref)FHoudiniNode& InNode, int32 PartId, EHoudiniPartType& Type, int32& FaceCount, int32& VertexCount, int32& PointCount);
+	static bool GetNodePartInfo(UPARAM(ref)FHoudiniNode& InNode, int32 PartId, EHoudiniPartType& Type, int32& VertexCount, int32& PointCount, int32& FaceCount);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool GetNodeInputOutputInfo(UPARAM(ref)FHoudiniNode& InNode, TArray<FName>& Inputs, TArray<FName>& Outputs);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool QueryNodeOutputConnectNodes(UPARAM(ref)FHoudiniNode& InNode, int32 OutputIndex, TArray<int32>& OutputNodeIds);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool QueryNodeInputConnectNode(UPARAM(ref)FHoudiniNode& InNode, int32 InputIndex, int32& InputNodeId);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool ConnectNodeOutputToNodeInput(UPARAM(ref)FHoudiniNode& OutputNode, int32 OutputIndex, UPARAM(ref)FHoudiniNode& InputNode, int32 InputIndex);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool DisConnectNodeInput(UPARAM(ref)FHoudiniNode& InNode, int32 InputIndex);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension", CustomThunk, meta=(CustomStructureParam="Value"))
+	static bool SetParamValue(UPARAM(ref)FHoudiniNode& InNode, const FString& ParamName, const int32& Value);
+	static bool Generic_SetParamValue(FHoudiniNode& InNode, const FString& ParamName, const void* Value, const FProperty* Property);
+	DECLARE_FUNCTION(execSetParamValue);
+
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
 	static int32 GetNodeItemCount(UPARAM(ref)FHoudiniNode& InNode, int32 PartId, EAttributeOwner Type);
 
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
-	static int32 CreateNode(int32 InParentId = -1, const FString& InNodeName = TEXT("SOP/null"), const FString& InNodeLabel = TEXT("Input"));
+	static int32 CreateSOPNode(int32 InParentId = -1, FString InNodeName = TEXT("null"), const FString& InNodeLabel = TEXT("Input"), bool bWaitForCompletion = true);
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
 	static int32 CreateInputNode(const FString& InNodeLabel);
-	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension", meta=(ToolTip="Counts is vertex count, face count, point count"))
-	static bool SetPartInfo(const FHoudiniNode& InNode, int32 InPartId, FIntVector Counts, bool bCreateDefaultP = true);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension", meta=(ToolTip="Counts is vertex count, point count, face count"))
+	static bool SetPartInfo(UPARAM(ref)const FHoudiniNode& InNode, int32 InPartId, FIntVector Counts, bool bCreateDefaultP = true);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static int32 GetNodeParent(UPARAM(ref)const FHoudiniNode& InNode);
 	
 	template<typename TStruct>
 	static bool SetArrayOfStructOnNode(const TArray<TStruct>& InArrayOfStruct, const FHoudiniNode& InNode, int32 PartId, EAttributeOwner ImportLevel, bool bCommitGeo = true);

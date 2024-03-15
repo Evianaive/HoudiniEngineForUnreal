@@ -1,6 +1,6 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
-//PRAGMA_DISABLE_INLINING
-//PRAGMA_DISABLE_OPTIMIZATION
+PRAGMA_DISABLE_INLINING
+PRAGMA_DISABLE_OPTIMIZATION
 
 #include "HoudiniEngineBPExtension.h"
 
@@ -111,7 +111,7 @@ bool FHoudiniNode::CookNodeNode(bool bWaitForCompletion)
 
 bool UHoudiniEngineBPExtension::GetNodePartInfo(
 	FHoudiniNode& InNode, int32 PartId, EHoudiniPartType& Type,
-	int32& FaceCount, int32& VertexCount, int32& PointCount)
+	int32& VertexCount, int32& PointCount, int32& FaceCount)
 {
 	if(!InNode.CookNodeNode(true))
 		return false;
@@ -125,6 +125,168 @@ bool UHoudiniEngineBPExtension::GetNodePartInfo(
 	VertexCount = PartInfo.vertexCount;
 	PointCount = PartInfo.pointCount;
 	return true;
+}
+
+bool UHoudiniEngineBPExtension::GetNodeInputOutputInfo(FHoudiniNode& InNode, TArray<FName>& Inputs,
+	TArray<FName>& Outputs)
+{
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
+	HAPI_NodeInfo NodeInfo;
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::GetNodeInfo(InNode.Session,InNode.NodeId,&NodeInfo),false);
+	FString Name;
+	for(int i=0;i<NodeInfo.inputCount;i++)
+	{
+		HAPI_StringHandle Handle;
+		HOUDINI_CHECK_ERROR_RETURN(
+			FHoudiniApi::GetNodeInputName(InNode.Session,InNode.NodeId,i,&Handle),false);
+		FHoudiniEngineString::ToFString(Handle,Name);
+		Inputs.Add(FName(Name));
+	}
+	for(int i=0;i<NodeInfo.outputCount;i++)
+	{
+		HAPI_StringHandle Handle;
+		HOUDINI_CHECK_ERROR_RETURN(
+			FHoudiniApi::GetNodeOutputName(InNode.Session,InNode.NodeId,i,&Handle),false);
+		FHoudiniEngineString::ToFString(Handle,Name);
+		Outputs.Add(FName(Name));
+	}
+	return true;
+}
+
+bool UHoudiniEngineBPExtension::QueryNodeOutputConnectNodes(FHoudiniNode& InNode, int32 OutputIndex,
+	TArray<int32>& OutputNodeIds)
+{
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
+	int32 ConnectCount = -1;
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::QueryNodeOutputConnectedCount(InNode.Session,InNode.NodeId,OutputIndex,false,false,&ConnectCount),false);
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::QueryNodeOutputConnectedNodes(InNode.Session,InNode.NodeId,OutputIndex,false,false,OutputNodeIds.GetData(),0,ConnectCount),false);
+	return true;
+}
+
+bool UHoudiniEngineBPExtension::QueryNodeInputConnectNode(FHoudiniNode& InNode, int32 InputIndex,
+	int32& InputNodeId)
+{
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
+	InputNodeId = -1;
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::QueryNodeInput(InNode.Session,InNode.NodeId,InputIndex,&InputNodeId),false);
+	
+	return true;
+}
+
+bool UHoudiniEngineBPExtension::ConnectNodeOutputToNodeInput(FHoudiniNode& OutputNode, int32 OutputIndex,
+	FHoudiniNode& InputNode, int32 InputIndex)
+{
+	if(!OutputNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
+	if(OutputNode.Session!=InputNode.Session)
+		return false;
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::ConnectNodeInput(OutputNode.Session,InputNode.NodeId,InputIndex,OutputNode.NodeId,OutputIndex),false);
+	return true;
+}
+
+bool UHoudiniEngineBPExtension::DisConnectNodeInput(FHoudiniNode& InNode, int32 InputIndex)
+{
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::DisconnectNodeInput(InNode.Session,InNode.NodeId,InputIndex),false);
+	return true;
+}
+
+bool UHoudiniEngineBPExtension::SetParamValue(FHoudiniNode& InNode, const FString& ParamName, const int32& Value)
+{
+	//We should never enter this
+	return false;
+}
+
+bool UHoudiniEngineBPExtension::Generic_SetParamValue(FHoudiniNode& InNode, const FString& ParamName, const void* Value,
+	const FProperty* Property)
+{
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
+	const auto ParamNameANSI = TCHAR_TO_ANSI(*ParamName);
+	HAPI_ParmInfo ParamInfo;
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::GetParmInfoFromName(InNode.Session,InNode.NodeId,ParamNameANSI,&ParamInfo),false);
+#define TryGetCastProperty(PropType) const F##PropType##Property* PropType##Prop = CastField<F##PropType##Property>(Property)
+	if(TryGetCastProperty(Str))
+	{
+		const FString String = StrProp->GetPropertyValue(Value);
+		FHoudiniApi::SetParmStringValue(InNode.Session,InNode.NodeId,TCHAR_TO_ANSI(*String),ParamInfo.id,0);
+	}
+	else if(TryGetCastProperty(Int))
+	{
+		FHoudiniApi::SetParmIntValue(InNode.Session,InNode.NodeId,ParamNameANSI,0,IntProp->GetPropertyValue(Value));
+	}
+	else if(TryGetCastProperty(Double))
+	{
+		FHoudiniApi::SetParmFloatValue(InNode.Session,InNode.NodeId,ParamNameANSI,0,float(DoubleProp->GetPropertyValue(Value)));
+	}
+	else if(TryGetCastProperty(Float))
+	{
+		FHoudiniApi::SetParmFloatValue(InNode.Session,InNode.NodeId,ParamNameANSI,0,FloatProp->GetPropertyValue(Value));
+	}
+	else
+	{
+		return false;
+	}
+	
+	return true;
+}
+
+DEFINE_FUNCTION(UHoudiniEngineBPExtension::execSetParamValue)
+{
+	P_GET_STRUCT_REF(FHoudiniNode,InNode);
+	P_GET_PROPERTY(FStrProperty,ParamName);
+	
+	Stack.StepCompiledIn<FArrayProperty>(NULL);
+	FProperty* SourceProperty = Stack.MostRecentProperty;
+	void* SourceValuePtr = Stack.MostRecentPropertyAddress;
+	
+	P_FINISH;
+	if (!SourceProperty || !SourceValuePtr)
+	{
+		// const FBlueprintExceptionInfo ExceptionInfo(
+		// 	EBlueprintExceptionType::AccessViolation,
+		// 	NSLOCTEXT("HoudiniExtension","SetField_MissingInputProperty", "Failed to resolve the input parameter for SetField.")
+		// );
+		// FBlueprintCoreDelegates::ThrowScriptException(Stack, ExceptionInfo);
+		P_NATIVE_BEGIN;
+		*(bool*)RESULT_PARAM = false;
+		P_NATIVE_END;
+	}
+	else
+	{
+		P_NATIVE_BEGIN;
+		*(bool*)RESULT_PARAM = UHoudiniEngineBPExtension::Generic_SetParamValue(InNode,ParamName,SourceValuePtr,SourceProperty);
+		P_NATIVE_END;
+	}
 }
 
 int32 UHoudiniEngineBPExtension::GetNodeItemCount(FHoudiniNode& InNode, int32 InPartId, EAttributeOwner ImportLevel)
@@ -146,10 +308,12 @@ int32 UHoudiniEngineBPExtension::GetNodeItemCount(FHoudiniNode& InNode, int32 In
 	return Count;
 }
 
-int32 UHoudiniEngineBPExtension::CreateNode(int32 InParentId, const FString& InNodeName, const FString& InNodeLabel)
+int32 UHoudiniEngineBPExtension::CreateSOPNode(int32 InParentId, FString InNodeName, const FString& InNodeLabel, bool bWaitForCompletion)
 {
 	int32 OutNodeId = -1;
-	FHoudiniEngineUtils::CreateNode(InParentId,InNodeName,InNodeLabel,true,&OutNodeId);
+	if(InParentId<0)
+		InNodeName = TEXT("SOP/")+InNodeName;
+	FHoudiniEngineUtils::CreateNode(InParentId,InNodeName,InNodeLabel,bWaitForCompletion,&OutNodeId);
 	return OutNodeId;
 }
 
@@ -176,8 +340,8 @@ bool UHoudiniEngineBPExtension::SetPartInfo(const FHoudiniNode& InNode, int32 In
 	Part.attributeCounts[HAPI_ATTROWNER_VERTEX] = 0;
 	Part.attributeCounts[HAPI_ATTROWNER_DETAIL] = 0;
 	Part.vertexCount = Counts.X;
-	Part.faceCount = Counts.Y;
-	Part.pointCount = Counts.Z;
+	Part.pointCount = Counts.Y;
+	Part.faceCount = Counts.Z;
 	Part.type = HAPI_PARTTYPE_MESH;
 	
 	HOUDINI_CHECK_ERROR_RETURN(FHoudiniApi::SetPartInfo(
@@ -188,7 +352,7 @@ bool UHoudiniEngineBPExtension::SetPartInfo(const FHoudiniNode& InNode, int32 In
 	{
 		HAPI_AttributeInfo AttributeInfoPoint;
 		FHoudiniApi::AttributeInfo_Init(&AttributeInfoPoint);
-		AttributeInfoPoint.count = Counts.Z;
+		AttributeInfoPoint.count = Part.pointCount;
 		AttributeInfoPoint.tupleSize = 3;
 		AttributeInfoPoint.exists = true;
 		AttributeInfoPoint.owner = HAPI_ATTROWNER_POINT;
@@ -220,6 +384,20 @@ bool UHoudiniEngineBPExtension::SetPartInfo(const FHoudiniNode& InNode, int32 In
 #endif
 	}
 	return true;
+}
+
+int32 UHoudiniEngineBPExtension::GetNodeParent(const FHoudiniNode& InNode)
+{
+	if(!InNode.IsValid())
+	{
+		HOUDINI_LOG_ERROR(TEXT("Invalid NodeId or SessionId"));
+		return false;
+	}
+	HAPI_NodeInfo NodeInfo;
+	NodeInfo.parentId = -1;
+	HOUDINI_CHECK_ERROR_RETURN(
+		FHoudiniApi::GetNodeInfo(InNode.Session,InNode.NodeId,&NodeInfo),false);
+	return NodeInfo.parentId;
 }
 
 bool UHoudiniEngineBPExtension::SetArrayOfStructOnNodeInternal(
@@ -407,5 +585,5 @@ bool UHoudiniEngineBPExtension::SetPropertyMetaData(const FName& PropertyName, U
 	return false;
 }
 
-//PRAGMA_ENABLE_INLINING
-//PRAGMA_ENABLE_OPTIMIZATION
+PRAGMA_ENABLE_INLINING
+PRAGMA_ENABLE_OPTIMIZATION
