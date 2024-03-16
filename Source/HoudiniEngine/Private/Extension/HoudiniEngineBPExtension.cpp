@@ -216,13 +216,13 @@ bool UHoudiniEngineBPExtension::DisConnectNodeInput(FHoudiniNode& InNode, int32 
 	return true;
 }
 
-bool UHoudiniEngineBPExtension::SetParamValue(FHoudiniNode& InNode, const FString& ParamName, const int32& Value)
+bool UHoudiniEngineBPExtension::SetParamValue(FHoudiniNode& InNode, const FString& ParamName, const int32 ParamTupleIndex, const int32& Value)
 {
 	//We should never enter this
 	return false;
 }
 
-bool UHoudiniEngineBPExtension::Generic_SetParamValue(FHoudiniNode& InNode, const FString& ParamName, const void* Value,
+bool UHoudiniEngineBPExtension::Generic_SetParamValue(FHoudiniNode& InNode, const FString& ParamName, int32 ParamTupleIndex, const void* Value,
 	const FProperty* Property)
 {
 	if(!InNode.IsValid())
@@ -235,22 +235,37 @@ bool UHoudiniEngineBPExtension::Generic_SetParamValue(FHoudiniNode& InNode, cons
 	HOUDINI_CHECK_ERROR_RETURN(
 		FHoudiniApi::GetParmInfoFromName(InNode.Session,InNode.NodeId,ParamNameANSI,&ParamInfo),false);
 #define TryGetCastProperty(PropType) const F##PropType##Property* PropType##Prop = CastField<F##PropType##Property>(Property)
+
+	// ParamInfo.size;
+	// FDataExchange_Base::PodStructsStorageInfo;
+	// FDataExchange_Base::PropertyStorageInfo;
+	// const FName& FiledName = Property->GetClass()->GetFName();
+	// if(TryGetCastProperty(Struct))
+	// {
+	// 	const FName& StructName = StructProp->Struct->GetFName();
+	// 	if(auto* StorageInfo = FDataExchange_Base::PodStructsStorageInfo.Find(StructName))
+	// 	{
+	// 		StorageInfo->ElementTupleCount;
+	// 		StorageInfo->StorageType;
+	// 	}
+	// }
+	
 	if(TryGetCastProperty(Str))
 	{
 		const FString String = StrProp->GetPropertyValue(Value);
-		FHoudiniApi::SetParmStringValue(InNode.Session,InNode.NodeId,TCHAR_TO_ANSI(*String),ParamInfo.id,0);
+		FHoudiniApi::SetParmStringValue(InNode.Session,InNode.NodeId,TCHAR_TO_ANSI(*String),ParamInfo.id,ParamTupleIndex);
 	}
 	else if(TryGetCastProperty(Int))
 	{
-		FHoudiniApi::SetParmIntValue(InNode.Session,InNode.NodeId,ParamNameANSI,0,IntProp->GetPropertyValue(Value));
+		FHoudiniApi::SetParmIntValue(InNode.Session,InNode.NodeId,ParamNameANSI,ParamTupleIndex,IntProp->GetPropertyValue(Value));
 	}
 	else if(TryGetCastProperty(Double))
 	{
-		FHoudiniApi::SetParmFloatValue(InNode.Session,InNode.NodeId,ParamNameANSI,0,float(DoubleProp->GetPropertyValue(Value)));
+		FHoudiniApi::SetParmFloatValue(InNode.Session,InNode.NodeId,ParamNameANSI,ParamTupleIndex,float(DoubleProp->GetPropertyValue(Value)));
 	}
 	else if(TryGetCastProperty(Float))
 	{
-		FHoudiniApi::SetParmFloatValue(InNode.Session,InNode.NodeId,ParamNameANSI,0,FloatProp->GetPropertyValue(Value));
+		FHoudiniApi::SetParmFloatValue(InNode.Session,InNode.NodeId,ParamNameANSI,ParamTupleIndex,FloatProp->GetPropertyValue(Value));
 	}
 	else
 	{
@@ -258,12 +273,14 @@ bool UHoudiniEngineBPExtension::Generic_SetParamValue(FHoudiniNode& InNode, cons
 	}
 	
 	return true;
+#undef TryGetCastProperty
 }
 
 DEFINE_FUNCTION(UHoudiniEngineBPExtension::execSetParamValue)
 {
 	P_GET_STRUCT_REF(FHoudiniNode,InNode);
 	P_GET_PROPERTY(FStrProperty,ParamName);
+	P_GET_PROPERTY(FIntProperty,ParamTupleIndex)
 	
 	Stack.StepCompiledIn<FArrayProperty>(NULL);
 	FProperty* SourceProperty = Stack.MostRecentProperty;
@@ -284,7 +301,7 @@ DEFINE_FUNCTION(UHoudiniEngineBPExtension::execSetParamValue)
 	else
 	{
 		P_NATIVE_BEGIN;
-		*(bool*)RESULT_PARAM = UHoudiniEngineBPExtension::Generic_SetParamValue(InNode,ParamName,SourceValuePtr,SourceProperty);
+		*(bool*)RESULT_PARAM = UHoudiniEngineBPExtension::Generic_SetParamValue(InNode,ParamName,ParamTupleIndex,SourceValuePtr,SourceProperty);
 		P_NATIVE_END;
 	}
 }

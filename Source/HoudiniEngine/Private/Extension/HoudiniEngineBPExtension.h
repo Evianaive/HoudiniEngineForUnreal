@@ -90,8 +90,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
 	static bool DisConnectNodeInput(UPARAM(ref)FHoudiniNode& InNode, int32 InputIndex);
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension", CustomThunk, meta=(CustomStructureParam="Value"))
-	static bool SetParamValue(UPARAM(ref)FHoudiniNode& InNode, const FString& ParamName, const int32& Value);
-	static bool Generic_SetParamValue(FHoudiniNode& InNode, const FString& ParamName, const void* Value, const FProperty* Property);
+	static bool SetParamValue(UPARAM(ref)FHoudiniNode& InNode, const FString& ParamName, const int32 ParamTupleIndex, const int32& Value);
+	static bool Generic_SetParamValue(FHoudiniNode& InNode, const FString& ParamName, int32 ParamTupleIndex,const void* Value, const FProperty* Property);
 	DECLARE_FUNCTION(execSetParamValue);
 
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
