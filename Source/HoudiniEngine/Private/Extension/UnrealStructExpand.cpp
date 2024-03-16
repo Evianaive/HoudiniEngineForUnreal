@@ -191,9 +191,15 @@ TMap<FName,FDataExchange_Info::FStorageInfo> FDataExchange_Base::PodStructsStora
 	{NAME_LinearColor,{4,HAPI_STORAGETYPE_FLOAT}},
 	
 	/*Transform will convert to Matrix*/
-	{NAME_Transform,{16,HAPI_STORAGETYPE_FLOAT64}},
-	{NAME_Transform3d,{16,HAPI_STORAGETYPE_FLOAT64}},
-	{NAME_Transform3f,{16,HAPI_STORAGETYPE_FLOAT}},
+	{NAME_Transform,{16,HAPI_STORAGETYPE_FLOAT64,
+	&TMatrixCoordConvert::ReOrderAndScale<double,true>,
+	&TMatrixCoordConvert::ReOrderAndScale<double,false>}},
+	{NAME_Transform3d,{16,HAPI_STORAGETYPE_FLOAT64,
+	&TMatrixCoordConvert::ReOrderAndScale<double,true>,
+	&TMatrixCoordConvert::ReOrderAndScale<double,false>}},
+	{NAME_Transform3f,{16,HAPI_STORAGETYPE_FLOAT,
+	&TMatrixCoordConvert::ReOrderAndScale<float,true>,
+	&TMatrixCoordConvert::ReOrderAndScale<float,false>}},
 
 	{NAME_Matrix,{16,HAPI_STORAGETYPE_FLOAT64,
 	&TMatrixCoordConvert::ReOrderAndScale<double,true>,
@@ -319,6 +325,10 @@ void FDataExchange_POD::PropToContainer(const uint8* Ptr)
 	{
 		FMemory::Memcpy(NewElem,Ptr,Property->ElementSize);
 	}
+	if(CoordConvertUE2Hou)
+	{
+		CoordConvertUE2Hou(NewElem);
+	}
 	if constexpr (bAddInfoCount)
 		Info.count++;
 }
@@ -348,6 +358,14 @@ void FDataExchange_POD::ArrayPropToContainer(const uint8* Ptr)
 			FMemory::Memcpy(NewElem,TempHelper.GetRawPtr(0),Num * Property->ElementSize);
 		}
 	}
+	if(CoordConvertUE2Hou)
+	{
+		for(int32 i = 0; i<Num; i++)
+		{
+			uint8* NewElem = ContainerHelper.GetRawPtr(AddStart+i);
+			CoordConvertUE2Hou(NewElem);
+		}
+	}
 	SizeFixedArray.Add(Num);
 	Info.count+=1;
 	Info.totalArrayElements+=Num;
@@ -357,7 +375,12 @@ template <bool bMinInfoCount>
 void FDataExchange_POD::ContainerToProp(uint8* Ptr)
 {
 	const int32 LastElemNum = ContainerHelper.Num()-1;
-	const uint8* NewElem = ContainerHelper.GetRawPtr(LastElemNum);
+	uint8* NewElem = ContainerHelper.GetRawPtr(LastElemNum);
+	
+	if(CoordConvertHou2Ue)
+	{
+		CoordConvertHou2Ue(NewElem);
+	}
 	if(ConvertSpecialization.ToStruct)
 	{
 		const auto ConvertResult = ConvertSpecialization.PerformConvert<false>(NewElem);
@@ -374,9 +397,38 @@ void FDataExchange_POD::ContainerToProp(uint8* Ptr)
 
 void FDataExchange_POD::ContainerToArrayProp(uint8* Ptr)
 {
+	const int32 Num = SizeFixedArray.Pop();
+	const int32 ContainerStart = ContainerHelper.Num() - Num;
+	
+	if(CoordConvertHou2Ue)
+	{
+		for(int32 i=ContainerStart;i<ContainerStart+Num;i++)
+		{
+			CoordConvertHou2Ue(ContainerHelper.GetRawPtr(i));
+		}
+	}
 
-	/*Todo*/	
-	// ContainerHelper.RemoveValues(LastElemNum);
+	FScriptArrayHelper TempHelper(ArrayProperty,Ptr);
+	const int32 StartNum = TempHelper.AddValues(Num);
+	if(ConvertSpecialization.ToStruct)
+	{
+		for(int32 i=0;i<Num;i++)
+		{
+			uint8* NewElem = TempHelper.GetRawPtr(StartNum+i);
+			const uint8* ContainerElem = ContainerHelper.GetRawPtr(ContainerStart+i);
+			const auto ConvertResult = ConvertSpecialization.PerformConvert<false>(ContainerElem);
+			FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
+		}
+	}
+	else
+	{
+		uint8* NewElem = TempHelper.GetRawPtr(StartNum);
+		FMemory::Memcpy(NewElem,ContainerHelper.GetRawPtr(ContainerStart),Num*Property->ElementSize);
+	}
+	ContainerHelper.RemoveValues(ContainerStart,Num);
+	
+	Info.count-=1;
+	Info.totalArrayElements-=Num;
 }
 
 void FDataExchange_POD::UnpackArray()
