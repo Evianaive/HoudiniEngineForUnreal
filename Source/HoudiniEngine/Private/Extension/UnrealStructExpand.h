@@ -328,7 +328,7 @@ struct FDataExchange_Struct : public FDataExchange_Base
 				FinalStruct = Re->ToStruct;
 				bExportString = Re->bExportString;
 			}
-			if(bExportString)
+			if(bExportString || StructProperty->GetBoolMetaData("ExportString"))
 			{
 				Add<FDataExchange_String>(FirstEnterProp);
 			}

@@ -305,8 +305,11 @@ FDataExchange_Info::FDataExchange_Info(const FProperty* Property)
 	{
 		Info.storage = Re->StorageType;
 		Info.tupleSize = Re->ElementTupleCount;
-		CoordConvertUE2Hou = Re->CoordConvertUE2Hou;
-		CoordConvertHou2Ue = Re->CoordConvertHou2Ue;
+		if(!GetInputProperty()->GetBoolMetaData(TEXT("NoCoordConvert")))
+		{
+			CoordConvertUE2Hou = Re->CoordConvertUE2Hou;
+			CoordConvertHou2Ue = Re->CoordConvertHou2Ue;
+		}
 	}
 	// Export String will Override POD Default Export Method because it create a StringExport
 }
