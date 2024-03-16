@@ -352,8 +352,9 @@ struct FHoudiniEngineUtilsExtenstion : public FHoudiniEngineUtils
 			HAPI_Result Result = HAPI_RESULT_FAILURE;
 			if(InAttributeInfo.totalArrayElements)
 				Array->SetNumUninitialized(1);
-			Array->Reserve(InAttributeInfo.totalArrayElements);
-			Array->SetNumZeroed(InAttributeInfo.totalArrayElements*2);
+			Array->Reserve(InAttributeInfo.totalArrayElements*2);
+			Array->SetNumZeroed(InAttributeInfo.totalArrayElements);
+			SizesFixedArray.SetNum(InAttributeInfo.count);
 			
 			// Set all the attribute values once
 			Result = (*Traits::Import)(

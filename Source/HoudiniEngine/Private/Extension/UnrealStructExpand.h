@@ -342,7 +342,7 @@ struct FDataExchange_Struct : public FDataExchange_Base
 				Add<FDataExchange_Struct>(FirstEnterProp);
 			}
 		}
-		else if (InProp->IsA(FNumericProperty::StaticClass()))
+		else if (InProp->IsA(FNumericProperty::StaticClass()) || InProp->IsA(FBoolProperty::StaticClass()))
 		{
 			Add<FDataExchange_POD>(FirstEnterProp);
 		}
