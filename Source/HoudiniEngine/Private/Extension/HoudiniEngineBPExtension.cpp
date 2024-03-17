@@ -382,11 +382,15 @@ bool UHoudiniEngineBPExtension::SetPartInfo(const FHoudiniNode& InNode, int32 In
 #if 1
 		// TArray<float> EmptyArray{0.0f};
 		const FVector3f DefaultPos{0,0,0};
-		// FHoudiniApi::SetAttributeFloatUniqueData(InNode.Session,InNode.NodeId,PartId,
-		// 	HAPI_UNREAL_ATTRIB_POSITION,&AttributeInfoPoint,&DefaultPos.X,3,0,InArrayOfStruct.Num());
+		HOUDINI_CHECK_ERROR_RETURN(
+			FHoudiniApi::SetAttributeFloatUniqueData(InNode.Session,InNode.NodeId,InPartId,
+			HAPI_UNREAL_ATTRIB_POSITION,&AttributeInfoPoint,&DefaultPos.X,
+			AttributeInfoPoint.tupleSize,0,AttributeInfoPoint.count),false);
 
-		HOUDINI_CHECK_ERROR_RETURN(FHoudiniEngineUtils::HapiSetAttributeFloatUniqueData(
-					DefaultPos.X, InNode.NodeId, 0, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint), false);
+		// The Parameter InFloatData of FHoudiniEngineUtils::HapiSetAttributeFloatUniqueData
+		// is not passed by reference! So we can't use method bellow
+		// HOUDINI_CHECK_ERROR_RETURN(FHoudiniEngineUtils::HapiSetAttributeFloatUniqueData(
+		// 			DefaultPos.X, InNode.NodeId, 0, HAPI_UNREAL_ATTRIB_POSITION, AttributeInfoPoint), false);
 #else
 		// Set the point's position
 		FVector3f ObjectPosition{4,5,6};
