@@ -11,6 +11,8 @@ TMap<UScriptStruct*,FStructConvertSpecialization> FStructConvertSpecialization::
 
 #pragma region Template
 
+// PRAGMA_DISABLE_OPTIMIZATION
+// PRAGMA_DISABLE_INLINING
 template<typename TIntSeq>
 struct TIntSeqHelper;
 template<int32... Is>
@@ -36,8 +38,9 @@ struct TLocalReOrder<TIntegerSequence<int32,Is...>> : public TIntSeqHelper<TInte
 	template<typename ElementType, bool bUE2Hou>
 	static void ReOrder(uint8* Data)
 	{
-		constexpr int32 ArraySize = sizeof...(Is);
-		static int32 Order[ArraySize] = {(bUE2Hou?Is:Find(Find(Is)))...};
+		// for example Is <0,2,1>
+		constexpr int32 ArraySize = sizeof...(Is); // ArraySize = 3
+		static int32 Order[ArraySize] = {(bUE2Hou?Is:Find(Find(Is)))...}; // bUE2Hou : Order = [0,2,1], bHou2UE order = [0]
 		ElementType* TypedData = reinterpret_cast<ElementType*>(Data);
 
 		int32 ReOrderRingStart = 0;
@@ -45,18 +48,23 @@ struct TLocalReOrder<TIntegerSequence<int32,Is...>> : public TIntSeqHelper<TInte
 		bool bHasOrdered[ArraySize] = {(Is,false)...};
 		while (true)
 		{
-			if((Order[ReOrderFrom] == ReOrderRingStart))
+			if(bHasOrdered[ReOrderFrom])
 			{
 				ReOrderRingStart++;
-				if(bHasOrdered[ReOrderRingStart])
-					continue;
 				if(ReOrderRingStart == ArraySize)
 					break;
+				if(bHasOrdered[ReOrderRingStart])
+					continue;
 				ReOrderFrom = ReOrderRingStart;
+			}
+			if((Order[ReOrderFrom] == ReOrderRingStart))
+			{
+				bHasOrdered[ReOrderFrom] = true;
 			}
 			else
 			{
 				FMemory::Memswap(TypedData+ReOrderFrom,TypedData+Order[ReOrderFrom],sizeof(ElementType));
+				bHasOrdered[ReOrderFrom] = true;
 				ReOrderFrom = Order[ReOrderFrom];
 			}
 		}
@@ -103,7 +111,7 @@ struct TLocalReOrderAndScale
 	static void ReOrderAndScale(uint8* Data)
 	{
 		TLocalReOrder<TReOrderSeq>::template ReOrder<ElementType,bUE2Hou>(Data);
-		TLocalScale<TReOrderSeq>::template Scale<ElementType,bUE2Hou>(Data);
+		TLocalScale<TScaleSeq>::template Scale<ElementType,bUE2Hou>(Data);
 	}
 };
 
@@ -111,6 +119,20 @@ using TRotatorCoordConvert = TLocalReOrder<TIntegerSequence<int32,2,0,1>>;
 using TVectorCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,0,2,1>,TMakeIntegerSequence<int32,3>>;
 using TColorCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,2,0,1,3>,TIntegerSequence<int32>>;
 using TMatrixCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,0,2,1,3,8,10,9,11,4,6,5,7,12,14,13,15>,TIntegerSequence<int32,12,13,14>>;
+
+// struct TestFunctionCoordConvert
+// {
+// 	TestFunctionCoordConvert()
+// 	{
+// 		float A[6] = {1,2,3,4,5,-1};
+// 		TLocalReOrder<TIntegerSequence<int32,0,4,1,2,3>>::ReOrder<float,false>((uint8*)A);
+// 		A[5]+=1;
+// 	}
+// 	static TestFunctionCoordConvert StaticInit;
+// };
+// TestFunctionCoordConvert TestFunctionCoordConvert::StaticInit = TestFunctionCoordConvert();
+// PRAGMA_ENABLE_INLINING
+// PRAGMA_ENABLE_OPTIMIZATION
 
 template<bool bUE2Hou, typename ElementType>
 static void ConvertInternal(UE::Math::TQuat<ElementType>* Quat)
@@ -451,11 +473,13 @@ namespace Private
 	{
 		if(StringExport.ConvertSpecialization.ToStruct)
 		{
+			// We can do coordinate convert here, but to make sure we have same behavior we don't
 			const auto ConvertResult = StringExport.ConvertSpecialization.PerformConvert<true>(Ptr);
 			ConvertResult.ExportTextItem(Value,ConvertResult,nullptr,PPF_None,nullptr);
 		}
 		else
 		{
+			// We will not do coordinate convert because it will modify original data unless we make a copy! 
 			StringExport.Property->ExportTextItem_Direct(Value,Ptr,Ptr,nullptr,PPF_None,nullptr); 
 		}
 	}
@@ -464,12 +488,14 @@ namespace Private
 		auto ValueChar = *Value;
 		if(StringExport.ConvertSpecialization.ToStruct)
 		{
+			// We can do coordinate convert here, but to make sure we have same behavior we don't
 			FInstancedStruct ConvertResult{StringExport.ConvertSpecialization.ToStruct};
 			ConvertResult.ImportTextItem(ValueChar,PPF_None,nullptr,nullptr);
 			StringExport.ConvertSpecialization.GetConversionMethodRaw<false>()(ConvertResult.GetMemory(),Ptr);
 		}
 		else
 		{
+			// We will not do coordinate convert because it will modify original data unless we make a copy!
 			StringExport.Property->ImportText_Direct(ValueChar,Ptr,nullptr,PPF_None,nullptr); 
 		}
 	}
