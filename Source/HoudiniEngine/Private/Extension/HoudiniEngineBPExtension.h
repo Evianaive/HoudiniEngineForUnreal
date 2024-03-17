@@ -129,7 +129,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
 	static bool GetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct, TMap<FName,FString>& MetaData);
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
-	static bool SetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct, const FName& MetaDataName, const FString& MetaDataValue);
+	static bool SetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct, UPARAM(ref) const TMap<FName,FString>& MetaData);
+	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
+	static bool MarkObjectDirty(UObject* ObjectChanged);
 };
 
 template <typename TStruct>

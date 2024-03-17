@@ -596,14 +596,21 @@ bool UHoudiniEngineBPExtension::GetPropertyMetaData(const FName& PropertyName, U
 }
 
 bool UHoudiniEngineBPExtension::SetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct,
-	const FName& MetaDataName, const FString& MetaDataValue)
+	const TMap<FName, FString>& MetaData)
 {
 	if(auto Property = ScriptStruct->FindPropertyByName(PropertyName))
 	{
-		Property->SetMetaData(MetaDataName,FString(MetaDataValue));
+		const_cast<TMap<FName, FString>&>(*Property->GetMetaDataMap()) = MetaData; 
 		return true;
 	}
 	return false;
+}
+
+bool UHoudiniEngineBPExtension::MarkObjectDirty(UObject* ObjectChanged)
+{
+	if(!ObjectChanged)
+		return false;
+	return ObjectChanged->MarkPackageDirty();
 }
 
 PRAGMA_ENABLE_INLINING
