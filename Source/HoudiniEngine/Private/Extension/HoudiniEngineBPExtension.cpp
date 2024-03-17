@@ -1,6 +1,6 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
-PRAGMA_DISABLE_INLINING
-PRAGMA_DISABLE_OPTIMIZATION
+// PRAGMA_DISABLE_INLINING
+// PRAGMA_DISABLE_OPTIMIZATION
 
 #include "HoudiniEngineBPExtension.h"
 
@@ -613,5 +613,5 @@ bool UHoudiniEngineBPExtension::MarkObjectDirty(UObject* ObjectChanged)
 	return ObjectChanged->MarkPackageDirty();
 }
 
-PRAGMA_ENABLE_INLINING
-PRAGMA_ENABLE_OPTIMIZATION
+// PRAGMA_ENABLE_INLINING
+// PRAGMA_ENABLE_OPTIMIZATION

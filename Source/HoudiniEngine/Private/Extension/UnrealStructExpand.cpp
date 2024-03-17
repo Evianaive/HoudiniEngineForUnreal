@@ -344,7 +344,7 @@ void FDataExchange_POD::PropToContainer(const uint8* Ptr)
 	if(ConvertSpecialization.ToStruct)
 	{
 		const auto ConvertResult = ConvertSpecialization.PerformConvert<true>(Ptr);
-		FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),Property->ElementSize);
+		FMemory::Memcpy(NewElem,ConvertResult.GetMemory(),ConvertSpecialization.ToStruct->GetStructureSize());
 	}
 	else
 	{
