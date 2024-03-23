@@ -119,7 +119,7 @@ using TRotatorCoordConvert = TLocalReOrder<TIntegerSequence<int32,2,0,1>>;
 using TVectorCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,0,2,1>,TMakeIntegerSequence<int32,3>>;
 using TColorCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,2,0,1,3>,TIntegerSequence<int32>>;
 using TMatrixCoordConvert = TLocalReOrderAndScale<TIntegerSequence<int32,0,2,1,3,8,10,9,11,4,6,5,7,12,14,13,15>,TIntegerSequence<int32,12,13,14>>;
-
+using TValueScaleConvert = TLocalScale<TIntegerSequence<int32,0>>;
 // struct TestFunctionCoordConvert
 // {
 // 	TestFunctionCoordConvert()
@@ -247,9 +247,12 @@ TMap<FName,FDataExchange_Info::FStorageInfo> FDataExchange_Base::PropertyStorage
 	{NAME_BoolProperty,{1,HAPI_STORAGETYPE_INT8}},
 	{NAME_EnumProperty,{1,HAPI_STORAGETYPE_INT}},
 	
-	{NAME_DoubleProperty,{1,HAPI_STORAGETYPE_FLOAT64}},
-	{NAME_FloatProperty,{1,HAPI_STORAGETYPE_FLOAT}},
-	
+	{NAME_DoubleProperty,{1,HAPI_STORAGETYPE_FLOAT64,
+		TValueScaleConvert::Scale<double,true>,
+		TValueScaleConvert::Scale<double,false>,}},
+	{NAME_FloatProperty,{1,HAPI_STORAGETYPE_FLOAT,
+		TValueScaleConvert::Scale<float,true>,
+		TValueScaleConvert::Scale<float,false>,}},	
 	{NAME_Int8Property,{1,HAPI_STORAGETYPE_INT8}},
 	{NAME_Int16Property,{1,HAPI_STORAGETYPE_INT16}},
 	{NAME_IntProperty,{1,HAPI_STORAGETYPE_INT}},
@@ -327,7 +330,7 @@ FDataExchange_Info::FDataExchange_Info(const FProperty* Property)
 	{
 		Info.storage = Re->StorageType;
 		Info.tupleSize = Re->ElementTupleCount;
-		if(!GetInputProperty()->GetBoolMetaData(TEXT("NoCoordConvert")))
+		if(GetInputProperty()->GetBoolMetaData(TEXT("CoordConvert")))
 		{
 			CoordConvertUE2Hou = Re->CoordConvertUE2Hou;
 			CoordConvertHou2Ue = Re->CoordConvertHou2Ue;
