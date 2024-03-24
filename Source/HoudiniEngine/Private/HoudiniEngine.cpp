@@ -50,6 +50,7 @@
 #include "ISettingsModule.h"
 #include "HAL/PlatformFileManager.h"
 #include "Async/Async.h"
+#include "Extension/RegisterStructConvert.h"
 #include "Logging/LogMacros.h"
 #include "Framework/Application/SlateApplication.h"
 
@@ -246,6 +247,7 @@ FHoudiniEngine::StartupModule()
 			});
 		}
 	}
+	FRegisterStructConvert::RegisterConvert();	
 }
 
 void 

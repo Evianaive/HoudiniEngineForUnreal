@@ -4,5 +4,5 @@ class FRegisterStructConvert
 {
 public:
 	FRegisterStructConvert();
-	static FRegisterStructConvert AutoRegister; 
+	static void RegisterConvert();
 };
