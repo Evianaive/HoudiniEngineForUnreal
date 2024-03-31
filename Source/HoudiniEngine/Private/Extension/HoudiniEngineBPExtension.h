@@ -8,6 +8,7 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "HoudiniEngineBPExtension.generated.h"
 
+class UHoudiniAssetComponent;
 class UUserDefinedStruct;
 /**
  * 
@@ -132,6 +133,9 @@ public:
 	static bool SetPropertyMetaData(const FName& PropertyName, UScriptStruct* ScriptStruct, UPARAM(ref) const TMap<FName,FString>& MetaData);
 	UFUNCTION(BlueprintCallable, Category = "HoudiniEngine Extension")
 	static bool MarkObjectDirty(UObject* ObjectChanged);
+
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "HoudiniEngine Extension")
+	static int32 GetHoudiniAssetComponentNodeId(const UHoudiniAssetComponent* AssetComponent);
 };
 
 template <typename TStruct>

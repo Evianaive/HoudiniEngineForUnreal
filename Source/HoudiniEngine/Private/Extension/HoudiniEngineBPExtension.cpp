@@ -613,5 +613,10 @@ bool UHoudiniEngineBPExtension::MarkObjectDirty(UObject* ObjectChanged)
 	return ObjectChanged->MarkPackageDirty();
 }
 
+int32 UHoudiniEngineBPExtension::GetHoudiniAssetComponentNodeId(const UHoudiniAssetComponent* AssetComponent)
+{
+	return AssetComponent->GetAssetId();
+}
+
 // PRAGMA_ENABLE_INLINING
 // PRAGMA_ENABLE_OPTIMIZATION
